@@ -7,7 +7,6 @@ library('lubridate')
 # one can use the function from the logger.R file:
 # logger.fatal(), logger.error(), logger.warn(), logger.info(), logger.debug(), logger.trace()
 
-# Showcase injecting app setting (parameter `year`)
 rFunction = function(data, where) {
   
   logger.info(paste0("Welcome to ", where, "!!!"))
