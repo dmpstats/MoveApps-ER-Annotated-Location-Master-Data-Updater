@@ -19,7 +19,19 @@ rFunction = function(data, where) {
     )
   
   
-  return(data)
+  # task1
+  hist <- fetch_hist_data(time_filter, spatial_filter, status_filter)
+  
+  
+  # task 2
+  new_data <- merge_clusters(data, hist)
+  
+  
+  # task 3
+  send_updated_data(new_data)
+  
+  
+  return(new_data)
   
    
   # if (!is.null(result)) {
@@ -43,3 +55,31 @@ rFunction = function(data, where) {
   # return(result)
   
 }
+
+
+
+fetch_hist_data <- function(time_filter = NULL, 
+                            spatial_filter = NULL, 
+                            status_filter = NULL){
+  
+  logger.info("Fetching data from ER...")
+  
+  move2::mt_sim_brownian_motion(t = seq(now() - days(1), now(), by = "1 hour")) |> 
+    sf::st_set_crs(4326)
+  
+}
+
+
+merge_clusters <- function(data, hist){
+  
+  logger.info("Merrrrrrging data...")
+  
+  move2::mt_stack(data, hist)
+  
+}
+
+
+send_updated_data <- function(data){
+  logger.info("Whoop - updated data sent to ER with noooooooo issues!")
+}
+

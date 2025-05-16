@@ -17,7 +17,6 @@ str(resp_json)
 
 
 
-
 # Animals (i.e. tracks) ------------------------------------------
 
 subjects_request <- request('https://standrews.pamdas.org/api/v1.0/subjects/') |> 

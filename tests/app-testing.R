@@ -24,18 +24,13 @@ set_interactive_app_testing()
 test_dt <- read_rds("data/raw/input1_move2loc_LatLon.rds")
 
 
-# ---------------------------------------- #
-# ----    Automated Unit testing        ----
-# ---------------------------------------- #
-
-testthat::test_file("tests/testthat/test_RFunction.R")
-
 
 # ---------------------------------------- #
 # ----   Interactive RFunction testing  ----
 # ---------------------------------------- #
 
 out <- rFunction(data = test_dt, where = "sunny Scotland")
+
 
 
 # ---------------------------------------- #
@@ -51,4 +46,10 @@ run_sdk(test_dt, where = "sunny Scotland")
 
 
 
+
+# ---------------------------------------- #
+# ----    Automated Unit testing        ----
+# ---------------------------------------- #
+
+testthat::test_file("tests/testthat/test_RFunction.R")
 
