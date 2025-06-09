@@ -6,3 +6,7 @@
 data/output/**
 !data/output/.keep
 tests/testthat/plot.png
+dev/~$rthRanger API Notes.docx
+dev/EarthRanger API Notes.docx
+dev/ER St Andrews Dev Instance Links.docx
+dev/~$ St Andrews Dev Instance Links.docx
