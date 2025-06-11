@@ -33,11 +33,11 @@ ER_PATCH_OBS <- function(api_url,
   ## Step 3: Pre-Processing ---------------------------------------------------
   # Convert observations to JSON-compatible format
   observations_json_ready <- observations %>%
-    # Convert latitude and longitude to strings
-    mutate(
-      latitude = as.character(latitude),
-      longitude = as.character(longitude)
-    ) %>%
+    # # Convert latitude and longitude to strings
+    # mutate(
+    #   latitude = as.character(latitude),
+    #   longitude = as.character(longitude)
+    # ) %>%
     tidyr::nest(
       location = c(latitude, longitude),
       additional = any_of(additional_cols), # Include user-defined columns in 'additional'
@@ -54,18 +54,20 @@ ER_PATCH_OBS <- function(api_url,
   results <- observations_json_ready %>%
     split(~id) %>%
     purrr::map_int(function(observation) {
+    
       # Extract the observation ID
       observation_id <- observation$id[1]
       
       # Convert observation to JSON
       observation_json <- observation %>%
-        select(-id) %>% # Remove the 'id' column as it's part of the URL path
+        #select(-id) %>% # Remove the 'id' column as it's part of the URL path
         as.list() %>%
+        purrr::modify_at("location", list_flatten) |> 
         jsonify::to_json(unbox = TRUE) # Serialize to JSON (no need for `toString()`)
       
-      cli::cli_inform("Showing request...")
+      cli::cli_inform("Showing request body...")
       
-      print(observation_json)
+      print(jsonify::pretty_json(observation_json))
       
       # Prepare PATCH request
       cli::cli_inform("Performing request to {paste0(api_url, observation_id)}")
@@ -79,16 +81,17 @@ ER_PATCH_OBS <- function(api_url,
         req_body_raw(observation_json)
       
       # Send request
-      res <- req_perform(req)
+      res <- req_error(req, is_error = ~ FALSE) |> 
+        req_perform()
       
       # Check for errors
       if (resp_is_error(res)) {
-        cli::cli_alert_danger("Error in PATCH request for ID {observation_id}: ", resp_body_string(res))
-        return(resp_status(res))
+        cli::cli_alert_danger("Error in PATCH request for ID {observation_id} - status code = {httr2::resp_status(res)}")
+        print(resp_body_json(res))
       } else {
         cli::cli_alert_success("Observation ID {observation_id} updated successfully.")
-        return(resp_status(res))
       }
+      return(resp_status(res))
     })
   
   ## Step 5: Log Results ------------------------------------------------------
