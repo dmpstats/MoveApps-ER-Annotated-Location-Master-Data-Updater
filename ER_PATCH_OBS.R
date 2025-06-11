@@ -60,9 +60,9 @@ ER_PATCH_OBS <- function(api_url,
       
       # Convert observation to JSON
       observation_json <- observation %>%
-        #select(-id) %>% # Remove the 'id' column as it's part of the URL path
         as.list() %>%
-        purrr::modify_at("location", list_flatten) |> 
+        # ensure fields get formatted as json "dictionary-type"
+        purrr::modify_at(c("location", "additional"), list_flatten) |> 
         jsonify::to_json(unbox = TRUE) # Serialize to JSON (no need for `toString()`)
       
       cli::cli_inform("Showing request body...")
@@ -81,7 +81,8 @@ ER_PATCH_OBS <- function(api_url,
         req_body_raw(observation_json)
       
       # Send request
-      res <- req_error(req, is_error = ~ FALSE) |> 
+      res <- req |> 
+        req_error(is_error = ~ FALSE) |> 
         req_perform()
       
       # Check for errors
