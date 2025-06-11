@@ -7,10 +7,12 @@ library('lubridate')
 # one can use the function from the logger.R file:
 # logger.fatal(), logger.error(), logger.warn(), logger.info(), logger.debug(), logger.trace()
 
-rFunction = function(data, where) {
+rFunction = function(data, additional_cols) {
   
-  logger.info(paste0("Welcome to ", where, "!!!"))
-  
+  # TODO - Required checks and pre-processing
+  # - colname of cluster_id
+  # - additional cols are present in data
+  # - ensure locations lan/lat; convert accordingly if not
   
   data <- data |> 
     dplyr::mutate(
