@@ -1,12 +1,11 @@
-ER_GET <- function(
-    server,
-    token,
-    attribute = c("observations", "sources"),
-    min_date = NULL,
-    max_date = NULL,
-    include_details = FALSE,
-    page_size = 5000
-) {
+ER_GET <- function(server,
+                   token,
+                   attribute = c("observations", "sources"),
+                   min_date = NULL,
+                   max_date = NULL,
+                   include_details = FALSE,
+                   page_size = 5000) {
+  
   # If min_date is not provided, use 31 days from sys.time
   if (is.null(min_date)) {
     min_date <- Sys.time() - lubridate::days(31)
@@ -63,28 +62,28 @@ ER_GET <- function(
       # observation_details contains a nested list equal in 
       # length to the data. We want to first turn this into a nested
       # column, and then unnest:
-    if (!is.null(data$data$results$observation_details)) {
-      
-      if (class(data$data$results$observation_details) == "data.frame") {
-        observation_details_out <- data$data$results$observation_details
-      } else {
-        observation_details_out <- data$data$results$observation_details |>
-          lapply(data.frame) |> 
-          # If any entry is a 0-row data frame or empty list, replace it 
-          # with a data.frame containing only PLACEHOLDER = NA
-          purrr::map(~ if (nrow(.) == 0 || is.null(.)) data.frame(PLACEHOLDER = NA) else .) |> 
-          dplyr::bind_rows() |> 
-          dplyr::select(-dplyr::any_of("PLACEHOLDER")) # this was just for merging
+      if (!is.null(data$data$results$observation_details)) {
+        
+        if (class(data$data$results$observation_details) == "data.frame") {
+          observation_details_out <- data$data$results$observation_details
+        } else {
+          observation_details_out <- data$data$results$observation_details |>
+            lapply(data.frame) |> 
+            # If any entry is a 0-row data frame or empty list, replace it 
+            # with a data.frame containing only PLACEHOLDER = NA
+            #purrr::map(~ if (nrow(.x) == 0 || is.null(.x)) data.frame(PLACEHOLDER = NA) else .x) |>
+            purrr::map( \(x){ if (nrow(x) == 0 || is.null(x)) data.frame(PLACEHOLDER = NA) else x}) |> 
+            dplyr::bind_rows() |> 
+            dplyr::select(-dplyr::any_of("PLACEHOLDER")) # this was just for merging
         }
-      
     
-      # Validate that nrow(observation_details_out) matches nrow(data$data$results)
-      if (nrow(observation_details_out) != nrow(data$data$results)) {
-        browser()
-        cli::cli_abort(
-          "Observation details length mismatch: {nrow(observation_details_out)} vs {nrow(data$data$results)}"
-        )
-      }
+        # Validate that nrow(observation_details_out) matches nrow(data$data$results)
+        if (nrow(observation_details_out) != nrow(data$data$results)) {
+          browser()
+          cli::cli_abort(
+            "Observation details length mismatch: {nrow(observation_details_out)} vs {nrow(data$data$results)}"
+          )
+        }
       
       # Bind observation_details_df back to the main data frame
       data$data$results <- data$data$results |>
@@ -115,5 +114,6 @@ ER_GET <- function(
   } else {
     combined_results <- data.frame()
   }
+  
   return(combined_results)
 }
