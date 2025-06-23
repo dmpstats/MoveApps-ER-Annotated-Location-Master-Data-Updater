@@ -422,7 +422,7 @@ send_new_obs <- function(new_dt, tm_id_col, trk_id_col, store_cols, api_base_url
 
 
 # ///////////////////////////////////////////////////////////////////////////////
-#' Low-level helper to perform Radio-Agent POST request
+#' Low-level helper to perform Radio-Agent POST Observations request
 #' 
 #' @param data a data.frame, data to be pushed to EarthRanger.
 #' @param tm_id_col character, name of the column in `data` that contains the
@@ -443,6 +443,8 @@ send_new_obs <- function(new_dt, tm_id_col, trk_id_col, store_cols, api_base_url
 #'   observations per request.
 #' 
 #' @details
+#' - RA-POST requests allow for automatic creation of new manufactor's/source ID 
+#' and subject's names
 #' - Requirements: "tag_id" and "individual_local_identifier" MUST be in data
 ra_post_obs <- function(data, 
                         tm_id_col, 
@@ -533,7 +535,10 @@ ra_post_obs <- function(data,
 
 
 
-# /////////////////////////////////////////////////////////////////////////////////
+# //////////////////////////////////////////////////////////////////////////////
+#' Perform observations GET requests to EarthRanger
+#' 
+#' Same parameters as `fetch_hist()`, above
 get_obs <- function(api_base_url, 
                     token, 
                     filter = NULL, 
@@ -693,7 +698,10 @@ get_obs <- function(api_base_url,
 
 
 
-# ///////////////////////////////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////////////////////
+#' Helper to fetch information about the transmitting device (i.e. manufactors ID)
+#' 
+#' @param src character, the UUID of the source
 get_source_details <- function(src, api_base_url, token){
   
   req_url <- file.path(api_base_url, "source", src)
@@ -712,7 +720,10 @@ get_source_details <- function(src, api_base_url, token){
 
 
 
-# ///////////////////////////////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////////////////////
+#' Helper to fetch information about the tagged subject
+#' 
+#' @param src character, the UUID of the source
 get_source_subjects <- function(src, api_base_url, token){
   
   req_url <- file.path(api_base_url, "source", src, "subjects")
@@ -731,7 +742,7 @@ get_source_subjects <- function(src, api_base_url, token){
 
 
 
-# //////////////////////////////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////////////////////
 #' General assumptions and scope:
 #'  - location columns must be named "lat"/"lon"
 #'  - This Patch function can only update the following obs fields: "location", 
