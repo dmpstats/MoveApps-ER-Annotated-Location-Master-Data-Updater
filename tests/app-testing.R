@@ -23,11 +23,13 @@ test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key
 
 #test_dt <- read_rds("data/raw/input1_move2loc_LatLon.rds")
 
+
 # ---------------------------------------- #
 # ----   Interactive RFunction testing  ----
 # ---------------------------------------- #
 
 set_interactive_app_testing()
+
 
 out <- rFunction(
   data = test_dt$nam_1 |> rename(latitude = lat, long = lon), 
@@ -35,29 +37,9 @@ out <- rFunction(
   api_token = "hhhdhdhhsha", 
   cluster_col = "clust_id", 
   lookback = 30L, 
-  store_cols
+  store_cols = c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
+  
 )
-
-
-
-
-store_cols <- c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
-
-x <- test_dt$nam_1[1, ] |> 
-  sf::st_drop_geometry() |> 
-  as.data.frame()
-
-
-test <- list(
-  location = list(
-    lon = x$lon,
-    lat = x$lat
-  ),
-  recorded_at = x$timestamp,
-  additional = as.list(x[store_cols])
-)
-
-jsonify::to_json(test, unbox = TRUE) |> jsonify::pretty_json() 
 
 
 

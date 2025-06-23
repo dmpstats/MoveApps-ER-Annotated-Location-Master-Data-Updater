@@ -28,7 +28,7 @@ test_that("rFunction() dev testing"{
     api_token = er_tokens$standrews.dev$brunoc, 
     cluster_id_col = "clust_id", 
     lookback = 30L, 
-    store_cols = c("clust_id", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+    store_cols = paste0(c("clust_id", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"),  collapse = ", ")
   )
   
 })

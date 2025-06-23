@@ -8,10 +8,6 @@ library(units)
 library(glue)
 library(sf)
 
-# NOTES:
-# - Cols for cluster ID and behaviour must be stored as they are used to metrics calculation 
-
-
 # wee helpers
 `%!in%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
@@ -26,7 +22,7 @@ rFunction = function(data,
                      store_cols_str = NULL) {
   
   # TODO's
-  # - generalize function to allow simple upating and storage of data in ER 
+  # - generalize function to allow simple updating and storage of data in ER 
   #   (i.e. without cluster tracking and merging)?
   # - Additional cols
   #    * [?] List columns required for the Metrics App and ensure they are stored
@@ -210,7 +206,6 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
     class = "no-clusters-in-input"
     )
   }
-  
   
   logger.info(proceed_msg)
   
@@ -808,9 +803,6 @@ patch_obs <- function(data,
   logger.info(glue::glue("{symbol$tick} {successful_requests} of {total_requests} observations updated successfully."))
 
 }
-
-
-
 
 
 
