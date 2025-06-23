@@ -2,10 +2,17 @@
   "version": "1.2",
   "settings": [
     {
-      "id": "where",
-      "name": "The name of the MoveApps SDK",
-      "description": "Showcase requesting a string input from the users of your app.",
-      "defaultValue": "MoveApps SDK",
+      "id": "api_hostname",
+      "name": "EarthRanger's API Server",
+      "description": "The hostname of EarthRanger's API Server (e.g. 'sandbox.pamdas.org)",
+      "defaultValue": null,
+      "type": "STRING"
+    },
+    {
+      "id": "store_cols",
+      "name": "Event attributes to store in EarthRanger",
+      "description": "",
+      "defaultValue": "",
       "type": "STRING"
     }
   ],

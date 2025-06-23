@@ -8,28 +8,58 @@ library(purrr)
 library(readr)
 library(sf)
 
+options(dplyr.width = Inf)
+
 # Helpers
 source("tests/app-testing-helpers.r")
 
-# # get App secret key for decrypting test dataset
-# app_key <- get_app_key()
-#  
-# # Read (encrypted) input datasets for testing
-# test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
-# #map(test_dt, nrow)
+# get App secret key for decrypting test dataset
+app_key <- get_app_key()
 
-set_interactive_app_testing()
+# Read (encrypted) input datasets for testing
+test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
+#map(test_dt, nrow)
 
 
-test_dt <- read_rds("data/raw/input1_move2loc_LatLon.rds")
-
-
+#test_dt <- read_rds("data/raw/input1_move2loc_LatLon.rds")
 
 # ---------------------------------------- #
 # ----   Interactive RFunction testing  ----
 # ---------------------------------------- #
 
-out <- rFunction(data = test_dt, where = "sunny Scotland")
+set_interactive_app_testing()
+
+out <- rFunction(
+  data = test_dt$nam_1 |> rename(latitude = lat, long = lon), 
+  api_hostname = "http://ret.tet.com", 
+  api_token = "hhhdhdhhsha", 
+  cluster_col = "clust_id", 
+  lookback = 30L, 
+  store_cols
+)
+
+
+
+
+store_cols <- c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
+
+x <- test_dt$nam_1[1, ] |> 
+  sf::st_drop_geometry() |> 
+  as.data.frame()
+
+
+test <- list(
+  location = list(
+    lon = x$lon,
+    lat = x$lat
+  ),
+  recorded_at = x$timestamp,
+  additional = as.list(x[store_cols])
+)
+
+jsonify::to_json(test, unbox = TRUE) |> jsonify::pretty_json() 
+
+
 
 
 
