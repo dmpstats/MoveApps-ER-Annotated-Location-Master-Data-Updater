@@ -26,7 +26,7 @@ rFunction = function(data,
   
   # TODO's
   # - Additional cols
-  #    * [?] List columns required for the Metrics App and ensure they are stored 
+  #    * [?] List columns required for the Metrics App and ensure they are stored
 
   
   # Input Validation ----------------------------------------------------------
@@ -103,6 +103,9 @@ rFunction = function(data,
     )
   }) |> 
     purrr::list_rbind()
+  
+  
+  
   
   
   
@@ -217,6 +220,25 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 
 
 # ////////////////////////////////////////////////////////////////////////////////////
+#' Download a subset of historic observations from master dataset stored in ER
+#' 
+#' @param api_base_url `<character>`, the base URL of the API endpoint used to fetch
+#'   historical data (e.g., `"https://api.example.org/v1"`).
+#' @param token `<character>`, a valid authentication token used to authorize the
+#'   request.
+#' @param min_date `<POSIXt/POSIXct/POSIXlt>`, the start date-time for filtering
+#'   observations (inclusive). If `NULL` (default, no lower date-time bound is
+#'   applied.
+#' @param max_date `<POSIXt/POSIXct/POSIXlt>`, the end date-time for filtering
+#'   observations (inclusive). If `NULL` (default), no upper date-time bound is
+#'   applied.
+#' @param include_details logical, If `TRUE` (default), includes additional
+#'   attributes in the response payload. If `FALSE`, returns only tracking
+#'   fields, i.e. location and time
+#' @param page_size Integer. Number of records to retrieve per page. Defaults to
+#'   5000. Larger values may reduce request frequency but can increase memory
+#'   usage.
+
 fetch_hist <- function(api_base_url, 
                        token, 
                        min_date = NULL, 
@@ -683,7 +705,7 @@ patch_obs <- function(data,
     cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
   }
   
-  # Perform PATCH requests (1 for each observation) ----------------------------
+  # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
   
   results <- data |> 
