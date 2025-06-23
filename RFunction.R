@@ -6,6 +6,7 @@ library(dplyr)
 library(cli)
 library(units)
 library(glue)
+library(sf)
 
 # NOTES:
 # - Cols for cluster ID and behaviour must be stored as they are used to metrics calculation 
@@ -50,9 +51,11 @@ rFunction = function(data,
   # Pre-processing ------------------------------------------------------
   logger.info("Performing top-level pre-processing.")
   
-  ## utility variables ----
+  ## utility variables in input data ----
   tm_id_col <- mt_time_column(data)
   trk_id_col <- mt_track_id_column(data)
+  dt_crs <- sf::st_crs(data)  # CRS
+  sf_col <- attr(data, "sf_column") # geometry column
   
   ## Location coordinates  ------
   ### Add lat/long columns to input data, if absent; otherwise, ensure they're 
@@ -105,6 +108,9 @@ rFunction = function(data,
     purrr::list_rbind()
   
   
+
+  
+  ?sf::st_geometry()
   
   
   
