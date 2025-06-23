@@ -743,15 +743,19 @@ get_source_subjects <- function(src, api_base_url, token){
 
 
 # ///////////////////////////////////////////////////////////////////////////////
+#' Perform observations PATCH request to EartRanger
+#' 
+#' @param store_cols names of columns to store in Master Observations data in
+#'   ER. If `NULL` (default), the existing attributes in the "additional" field
+#'   are preserved. If provided, the field will be fully overwritten with the
+#'   specified columns and their values — **use with caution**.
+#'   
+#'  @details
 #' General assumptions and scope:
 #'  - location columns must be named "lat"/"lon"
-#'  - This Patch function can only update the following obs fields: "location", 
-#'    "additional" and "exclusion_flags"
-#'    
-#' @param store_cols names of columns to store in Master Observations data in ER.
-#'   If `NULL` (default), attributes and respective values in the additional
-#'   field are kept unchanged. Otherwise field is entirely overwritten - HANDLE
-#'   WITH CARE!
+#'  - Currently this Patch function is (deliberately) limited to only update 
+#'  the following Obs fields: "location", "additional" and "exclusion_flags"
+#'   
 patch_obs <- function(data,
                       store_cols = NULL,
                       api_base_url, 
