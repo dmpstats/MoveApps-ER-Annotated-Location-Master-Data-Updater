@@ -108,13 +108,6 @@ rFunction = function(data,
     purrr::list_rbind()
   
   
-
-  
-  ?sf::st_geometry()
-  
-  
-  
-  
   ## Build base URL --------
   if(grepl("http", api_hostname)){
     api_hostname <- httr2::url_parse(api_hostname)$hostname
