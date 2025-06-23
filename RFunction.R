@@ -238,7 +238,16 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #' @param page_size Integer. Number of records to retrieve per page. Defaults to
 #'   5000. Larger values may reduce request frequency but can increase memory
 #'   usage.
-
+#' 
+#' @details 
+#' - process split into 2 fetching requests:
+#'      1. ALL observations tagged with clusters that are currently active 
+#'      (`filter` == 8)
+#'      2. For a given time-window: observations tagged with closed clusters AND
+#'      un-clustered observations
+#' - Output: attributes are renamed to ensure compatibility with original 
+#'   `<move2>` data
+#' 
 fetch_hist <- function(api_base_url, 
                        token, 
                        min_date = NULL, 
@@ -340,12 +349,28 @@ fetch_hist <- function(api_base_url,
 
 
 # /////////////////////////////////////////////////////////////////////////////////
-# Push new observations via a Radio Agent POST Request, so that new tag/subjects
-# are automatically added on the ER side
-#
-# NOTE: This approach is a bit hacky, as RA requests don't allow to pass
-# exclusions flags. So taking the workaround: RA-POST(new) -> GET(just posted)
-# -> PATCH(exlusion_flags on just posted)
+#' Send new observations to EarthRanger
+#' 
+#' @param new_dt a data.frame, containing new observations to be pushed to
+#'   EarthRanger.
+#' @param tm_id_col character, name of the column in `new_dt` that contains the
+#'   timestamps of each observation.
+#' @param trk_id_col character, the name of the column in `new_dt` cthat
+#'   identifies the associated track ID for each observation.
+#' @param store_cols character vector, Names of additional columns in `new_dt`
+#'   to be stored alongside the tracking data in EarthRanger.
+#' @param api_base_url `<character>`, the base URL of the API endpoint used to fetch
+#'   historical data (e.g., `"https://api.example.org/v1"`).
+#' @param token `<character>`, a valid authentication token used to authorize the
+#'   request.
+#' 
+#' @details
+#' - Push new observations via a Radio Agent POST Request, so that new tag/subjects
+#'   are automatically added on the ER side.
+#' - NOTE: This approach is a bit hacky, as RA requests don't allow to pass 
+#'   exclusions flags. So taking the workaround: RA-POST(new) -> GET(just posted) -> 
+#'   -> PATCH(exclusion_flags on just posted)
+
 send_new_obs <- function(new_dt, tm_id_col, trk_id_col, store_cols, api_base_url, token){
   
   # 1. Post all attributes except cluster_status ----- 
@@ -396,7 +421,8 @@ send_new_obs <- function(new_dt, tm_id_col, trk_id_col, store_cols, api_base_url
 
 
 
-# //////////////////////////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////////////////////
+#' 
 # Requirements: "tag_id" and "individual_local_identifier" MUST be in data
 ra_post_obs <- function(data, 
                         tm_id_col, 
