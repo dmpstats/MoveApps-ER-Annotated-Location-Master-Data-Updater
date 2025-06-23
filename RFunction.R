@@ -18,7 +18,7 @@ not_null <- Negate(is.null)
 
 
 rFunction = function(data, 
-                     api_hostname, #api_server-__
+                     api_hostname,
                      api_token,
                      cluster_id_col = "clust_id",
                      #behav_col = NULL,
@@ -26,10 +26,11 @@ rFunction = function(data,
                      store_cols_str = NULL) {
   
   # TODO's
+  # - generalize function to allow simple upating and storage of data in ER 
+  #   (i.e. without cluster tracking and merging)?
   # - Additional cols
   #    * [?] List columns required for the Metrics App and ensure they are stored
 
-  
   # Input Validation ----------------------------------------------------------
   
   logger.info("Checking inputs")
