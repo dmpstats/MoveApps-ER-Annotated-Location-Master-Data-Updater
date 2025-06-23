@@ -355,7 +355,7 @@ fetch_hist <- function(api_base_url,
 #'   EarthRanger.
 #' @param tm_id_col character, name of the column in `new_dt` that contains the
 #'   timestamps of each observation.
-#' @param trk_id_col character, the name of the column in `new_dt` cthat
+#' @param trk_id_col character, the name of the column in `new_dt` that
 #'   identifies the associated track ID for each observation.
 #' @param store_cols character vector, Names of additional columns in `new_dt`
 #'   to be stored alongside the tracking data in EarthRanger.
@@ -422,8 +422,28 @@ send_new_obs <- function(new_dt, tm_id_col, trk_id_col, store_cols, api_base_url
 
 
 # ///////////////////////////////////////////////////////////////////////////////
+#' Low-level helper to perform Radio-Agent POST request
 #' 
-# Requirements: "tag_id" and "individual_local_identifier" MUST be in data
+#' @param data a data.frame, data to be pushed to EarthRanger.
+#' @param tm_id_col character, name of the column in `data` that contains the
+#'   timestamps of each observation.
+#' @param trk_id_col character, the name of the column in `data` that
+#'   identifies the associated track ID for each observation.
+#' @param store_cols character vector, Names of additional columns in `data`
+#'   to be stored alongside the tracking data in EarthRanger.
+#' @param api_base_url `<character>`, the base URL of the API endpoint used to fetch
+#'   historical data (e.g., `"https://api.example.org/v1"`).
+#' @param token `<character>`, a valid authentication token used to authorize the
+#'   request.
+#' @param provider_key character string, specifying the natural key for the
+#'   source provider, as defined in EarthRanger. Expects such key is already
+#'   defined in ER's Observation's system. 
+#' @param batch_size numeric, the number of observations to include in each
+#'   batch POST request. ER's documentation suggest sending as many as 100
+#'   observations per request.
+#' 
+#' @details
+#' - Requirements: "tag_id" and "individual_local_identifier" MUST be in data
 ra_post_obs <- function(data, 
                         tm_id_col, 
                         trk_id_col, 
