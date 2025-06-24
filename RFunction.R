@@ -27,7 +27,8 @@ rFunction = function(data,
   # - generalize function to allow simple updating and storage of data in ER 
   #   (i.e. without cluster tracking and merging)?
   # - Additional cols
-  #    * [?] List columns required for the Metrics App and ensure they are stored
+  #    * Ensure key columns (e.g. `master_cluster_id`, `cluster_status`) are 
+  #      *ALWAYS* included in the `additional` field on POST and PATCH requests to ER
 
   # Input Validation ----------------------------------------------------------
   
@@ -103,15 +104,18 @@ rFunction = function(data,
     store_cols <- gsub("\\s+", "", store_cols_parsed)
   }
   
-  ### check presence in data
-  if (!is.null(store_cols) && any(store_cols %!in% names(data))) {
-    stop(paste0(
-      "Specified additional columns ", paste(store_cols[store_cols %!in% names(data)], collapse = ", "),
-      " are not present in the input data. Please ensure these columns exist."
-    ))
+  ### ensure listed store_cols are in data
+  if (!is.null(store_cols)){
+    missing_store_cols <- store_cols %!in% names(data)
+    if(length(missing_store_cols) > 0){
+      cli::cli_abort(c(
+        "Attribute{?s} {.val {store_cols[missing_store_cols]}} not found in the input data.",
+        "i" = "Ensure all names listed in {.arg store_cols} match column names in the input dataset."
+      ))
+    }
   }
   
-  ### Introspect the class/type of traced store_cols
+  ### Introspecting the class/type of traced store_cols
   store_cols_profile <- purrr::map(store_cols, function(col){
     x <- data[[col]]
     data.frame(
@@ -254,7 +258,7 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #' 
 #' @details 
 #' - process split into 2 fetching requests:
-#'      1. ALL observations tagged with clusters that are currently active 
+#'      1. **ALL** observations tagged with clusters that are currently active 
 #'      (`filter` == 8)
 #'      2. For a given time-window: observations tagged with closed clusters AND
 #'      un-clustered observations
