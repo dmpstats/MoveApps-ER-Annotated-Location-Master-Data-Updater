@@ -1,21 +1,45 @@
 {
-  "version": "1.2",
+  "version": "1.0",
   "settings": [
     {
       "id": "api_hostname",
-      "name": "EarthRanger's API Server",
-      "description": "The hostname of EarthRanger's API Server (e.g. 'sandbox.pamdas.org)",
+      "name": "EarthRanger API Server",
+      "description": "Hostname of the EarthRanger API server (e.g. 'sandbox.pamdas.org').",
       "defaultValue": null,
       "type": "STRING"
     },
     {
-      "id": "store_cols",
-      "name": "Event attributes to store in EarthRanger",
-      "description": "",
-      "defaultValue": "",
+      "id": "api_token",
+      "name": "EarthRanger API Key",
+      "description": "A valid and active access token for the selected EarthRanger API Server.",
+      "defaultValue": null,
+      "type": "STRING"
+    },
+    {
+      "id": "cluster_id_col",
+      "name": "Cluster ID Column",
+      "description": "Name of the column in the input data that contains cluster IDs for location points.",
+      "defaultValue": "clust_id",
+      "type": "STRING"
+    },
+    {
+      "id": "lookback",
+      "name": "Lookback (days)",
+      "description": "Number of days to look back from the earliest timestamp in the input data to retrieve unclustered historical observations for updating. Note: Observations assigned to active clusters are always retrieved automatically.",
+      "defaultValue": 30,
+      "type": "INTEGER"
+    },
+    {
+      "id": "store_cols_str",
+      "name": "Attributes to store in EarthRanger.",
+      "description": "Comma- or semicolon-separated list of attribute names to store along each observation's location and timestamp in EarthRanger. If `NULL`, all attributes are stored.",
+      "defaultValue": null,
       "type": "STRING"
     }
   ],
+    "documentation": {
+    "url": "https://github.com/example-user/example-app/blob/master/README.md"
+  },
   "dependencies": {
     "R": [
       {
@@ -23,49 +47,100 @@
       },
       {
         "name": "move2"
+      },
+      {
+        "name": "httr2"
+      },
+      {
+        "name": "rlang"
+      },
+      {
+        "name": "dplyr"
+      },
+      {
+        "name": "cli"
+      },
+      {
+        "name": "units"
+      },
+      {
+        "name": "glue"
+      },
+      {
+        "name": "sf"
+      },
+      {
+        "name": "purrr"
+      },
+      {
+        "name": "tidyr"
       }
     ]
   },
-  "providedAppFiles": [
-    {
-      "settingId": "auxiliary-file-a",
-      "from": "data/auxiliary/user-files/provided-app-files/auxiliary-file-a/sample.txt"
-    }
-  ],
+  "providedAppFiles": [],
   "license": {
     "key": "MIT"
   },
   "language": "eng",
   "keywords": [
-    "example",
-    "template"
-  ],
+    "EarthRanger",
+    "data storage",
+    "clusters"
+    ],
   "people": [
     {
-      "firstName": "Charles",
+      "firstName": "Bruno",
       "middleInitials": null,
-      "lastName": "Darwin",
-      "email": "creator@example.com",
-      "roles": [
-        "author",
-        "creator"
-      ],
+      "lastName": "Caneco",
+      "email": "bruno@dmpstats.co.uk",
+      "roles": ["author", "compiler", "creator"],
+      "orcid": "0009-0009-0124-7156",
+      "affiliation": "DMP Statistical Solutions UK Limited"
+    },
+    {
+      "firstName": "Callum",
+      "middleInitials": "J.",
+      "lastName": "Clarke",
+      "email": "callum@dmpstats.co.uk",
+      "roles": ["author", "creator"],
       "orcid": null,
-      "affiliation": null,
-      "affiliationRor": null
+      "affiliation": "DMP Statistical Solutions UK Limited"
+    },
+    {
+      "firstName": "Lindesay",
+      "middleInitials": null,
+      "lastName": "Scott-Hayward",
+      "email": "lass@st-andrews.ac.uk",
+      "roles": ["contributor"],
+      "orcid": "0000-0003-3402-533X",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Jes",
+      "middleInitials": null,
+      "lastName": "Lefcourt",
+      "email": "jesl@earthranger.com",
+      "roles": ["contributor"],
+      "orcid": "",
+      "affiliation": "EarthRanger / Allen Institute for Artificial Intelligence",
+      "affiliationRor": ""
+    },
+    {
+      "firstName": "Monique",
+      "middleInitials": null,
+      "lastName": "MacKenzie",
+      "email": "monique.mackenzie@st-andrews.ac.uk",
+      "roles": ["contributor"],
+      "orcid": "0000-0002-8505-6585",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
     }
   ],
   "funding": [
     {
-      "name": "funder name",
-      "comment": "grant for App"
-    }
-  ],
-  "references": [
-    {
-      "type": "IsDescribedBy",
-      "note": "Darwin, C. 1900. The creation. Journal XY. 1-2",
-      "url": "https://anylink.xyz"
+      "name": "Endangered Wildlife Trust",
+      "comment": null
     }
   ]
 }
