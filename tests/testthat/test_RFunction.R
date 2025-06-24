@@ -18,25 +18,6 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
 
-test_that("rFunction() dev testing"{
-  
-  skip()
-  
-  out <- rFunction(
-    data = test_dt$nam_1 |> rename(latitude = lat, longit = lon), 
-    api_hostname = "https://standrews.dev.pamdas.org/", 
-    api_token = er_tokens$standrews.dev$brunoc, 
-    cluster_id_col = "clust_id", 
-    lookback = 30L, 
-    store_cols = paste0(c("clust_id", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"),  collapse = ", ")
-  )
-  
-})
-
-
-
-
-
 
 test_that("output is a valid move2 object", {
   
@@ -48,6 +29,41 @@ test_that("output is a valid move2 object", {
   
 })
 
-test
+
+
+
+test_that("Input validation works as expected", {
+  
+  testthat::local_edition(3)
+  
+  # missing `hostname` or `token`
+  expect_snapshot(rFunction(data = test_dt$nam_1), error = TRUE)
+  expect_snapshot(rFunction(data = test_dt$nam_1, api_hostname = "test"), error = TRUE)
+  
+  
+  # `cluster_id_col`: unspecified or absent from input data
+  expect_snapshot(
+    rFunction(data = test_dt$nam_1, api_hostname = "bla", api_token = "bla", cluster_id_col = NULL), 
+    error = TRUE
+  )
+  
+  expect_snapshot(
+    rFunction(
+      data = test_dt$nam_1, api_hostname = "bla", api_token = "bla", 
+      cluster_id_col = "ABSENT_COLUMN"), 
+    error = TRUE
+  )
+  
+  
+  
+  # out <- rFunction(
+  #   data = test_dt$nam_1 |> rename(latitude = lat, longit = lon), 
+  #   cluster_id_col = "clust_id", 
+  #   lookback = 30L
+  # )
+})
+
+
+
 
 

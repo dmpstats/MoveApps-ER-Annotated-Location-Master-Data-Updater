@@ -7,6 +7,8 @@ library(cli)
 library(units)
 library(glue)
 library(sf)
+library(purrr)
+library(tidyr)
 
 # wee helpers
 `%!in%` <- Negate(`%in%`)
@@ -14,8 +16,8 @@ not_null <- Negate(is.null)
 
 
 rFunction = function(data, 
-                     api_hostname,
-                     api_token,
+                     api_hostname = NULL,
+                     api_token = NULL,
                      cluster_id_col = "clust_id",
                      #behav_col = NULL,
                      lookback = 30L,
@@ -31,17 +33,33 @@ rFunction = function(data,
   
   logger.info("Checking inputs")
   
-  ## Required Column IDs
+  ## `api_hostname` and `api_token`
+  if(is.null(api_hostname)){
+    cli::cli_abort(c(
+      "Argument {.arg api_hostname} is missing.",
+      "{.arg api_hostname} must be an {.cls string}, not `NULL`."
+    ))
+  }
+  
+  if(is.null(api_token)){
+    cli::cli_abort(c(
+      "Argument {.arg api_token} is missing.",
+      "{.arg api_token} must be an {.cls string}, not `NULL`."
+    ))
+  }
+
+  ## `cluster_id_col`
   check_col_dependencies(
     id_col = cluster_id_col, 
     app_par_name = "Cluster ID Column", 
-    dt = data, 
+    dt = data,
     suggest_msg = paste0(
       "Use clustering Apps such as {.href [Avian Cluster Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2)} ",
       "earlier in the workflow to generate the required column."),
     proceed_msg = paste0("Check on required columns over - all good!")
   )
   
+  ## `lookback`
   if(!is.integer(lookback)) cli::cli_abort("{.arg lookback} must be an {.cls integer}.")
   
   
@@ -73,6 +91,7 @@ rFunction = function(data,
       dplyr::rename_with(~"lon", .cols = dplyr::matches("^lon"))
   }
   
+  
   ## Additional columns ---------
   ### Parse name of non-tracking attributes to include in upload
   if(is.null(store_cols_str) || (length(store_cols_str) == 1 && nchar(store_cols_str) == 0)){
@@ -91,7 +110,6 @@ rFunction = function(data,
       " are not present in the input data. Please ensure these columns exist."
     ))
   }
-  
   
   ### Introspect the class/type of traced store_cols
   store_cols_profile <- purrr::map(store_cols, function(col){
@@ -182,21 +200,21 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
       "Parameter '{app_par_name}' ({.arg {arg}}) must be a string.",
       call = call)
     
-  } else if (id_col %!in% dt_cols) {++
+  } else if (id_col %!in% dt_cols) {
     logger.fatal(paste0(
-      "Input data does not have column '", id_col,"'. Please provide a ",
+      "Input data does not have column '", id_col, "'. Please provide a ",
       "valid column name with cluster ID annotations."
     ))
     cli::cli_abort(c(
       "Specified column name {.arg {id_col}} must be present in the input data.",
       "!" = "Please provide a valid column name for parameter '{app_par_name}' ({.arg {arg}}).",
-      "i" = suggest_msg
+      i = suggest_msg
     ), call = call)
   } 
   
 
   if(all(is.na(dt[[id_col]]))){
-    logger.fatal(glu:e:glue("Column {.code {id_col}} in input data contains universally NAs"))
+    #logger.fatal(glue::glue("Column {.code {id_col}} in input data contains universally NAs"))
     cli::cli_abort(c(
       "Column {.code {id_col}} in input dataset contains only NAs. Unable to proceed with cluster updating.",
       "i" = paste0(
@@ -843,6 +861,7 @@ merge_magic_fn <- function(data, hist){
   move2::mt_stack(data, hist)
   
 }
+
 
 
 
