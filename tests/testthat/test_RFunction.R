@@ -38,29 +38,48 @@ test_that("Input validation works as expected", {
   
   # missing `hostname` or `token`
   expect_snapshot(rFunction(data = test_dt$nam_1), error = TRUE)
-  expect_snapshot(rFunction(data = test_dt$nam_1, api_hostname = "test"), error = TRUE)
+  expect_snapshot(rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk"), error = TRUE)
   
   
   # `cluster_id_col`: unspecified or absent from input data
   expect_snapshot(
-    rFunction(data = test_dt$nam_1, api_hostname = "bla", api_token = "bla", cluster_id_col = NULL), 
+    rFunction(
+      data = test_dt$nam_1, 
+      api_hostname = "bla.co.uk", 
+      api_token = "XYZ", 
+      cluster_id_col = NULL
+    ), 
     error = TRUE
   )
   
   expect_snapshot(
     rFunction(
-      data = test_dt$nam_1, api_hostname = "bla", api_token = "bla", 
-      cluster_id_col = "ABSENT_COLUMN"), 
+      data = test_dt$nam_1, 
+      api_hostname = "bla.co.uk", 
+      api_token = "XYZ", 
+      cluster_id_col = "ABSENT_COLUMN"
+    ), 
     error = TRUE
   )
   
+  # `lookback`
+  expect_snapshot(
+    rFunction(
+      data = test_dt$nam_1, 
+      api_hostname = "bla.co.uk", 
+      api_token = "XYZ", 
+      cluster_id_col = "clust_id", 
+      lookback = 1.2
+    ), 
+    error = TRUE
+  )
   
+  # `store_cols_str`
+  rFunction(
+    data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ",
+    store_cols_str = paste("NO_COLUMN_1", "NO_COLUMN_2", "NO_COLUMN_3", "clust_id", sep = ",")
+  )
   
-  # out <- rFunction(
-  #   data = test_dt$nam_1 |> rename(latitude = lat, longit = lon), 
-  #   cluster_id_col = "clust_id", 
-  #   lookback = 30L
-  # )
 })
 
 
