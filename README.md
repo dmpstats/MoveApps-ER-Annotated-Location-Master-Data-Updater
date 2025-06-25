@@ -44,7 +44,6 @@ The App performs three core tasks:
     current input, including:
 
     - All historical observations associated with **active clusters**.
-
     - **Unclustered** observations within a configurable `lookback`
       window (i.e., a number of days before the earliest timestamp in
       the input data).
