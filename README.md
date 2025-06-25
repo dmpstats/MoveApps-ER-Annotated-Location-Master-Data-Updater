@@ -51,8 +51,8 @@ The App performs three core tasks:
 2.  **Merge Datasets**  
     The newest upstream data is combined with historical observations,
     with an emphasis on correctly updating cluster membership
-    information (see section on [cluster merging](#sec-clust-merging)
-    below for further details).
+    information (see section on [cluster
+    merging](#cluster-merging-and-updating) below for further details).
 
 3.  **Push to EarthRanger**  
     The resulting dataset - containing both new and updated records - is
@@ -68,7 +68,7 @@ and the [Cluster Importance
 Scoring](https://www.moveapps.org/apps/browser/e8f5b376-0858-4206-9861-e2cd5fcc8c41)
 Apps.
 
-### Cluster merging and updating process
+### Cluster merging and updating
 
 *\[Flesh out main details\]*
 
