@@ -1,77 +1,149 @@
-# Name of App *(Give your app a short and informative title. Please adhere to our convention of Title Case without hyphens (e.g. My New App))*
+
+
+# MoveApps-EarthRanger Annotated Location Master Data Updater
 
 MoveApps
 
-Github repository: *github.com/yourAccount/Name-of-App* *(provide the link to the repository where the code of the App can be found)*
+Github repository:
+<https://github.com/dmpstats/MoveApps-ER-Annotated-Location-Master-Data-Updater>
 
 ## Description
-*Enter here the short description of the App that might also be used when filling out the description during App submission to MoveApps. This text is directly presented to Users that look through the list of Apps when compiling Workflows.*
+
+This App enables the persistent storage and updating of annotated
+movement data in a master dataset hosted on an
+[EarthRanger](https://www.earthranger.com/) server. It is intended for
+workflows where MoveBank data has been classified with additional
+attributes - such as behavioural classifications or spatial cluster
+membership - and needs to be saved over time.
+
+It is particularly useful in scheduled or automated workflows, where
+recent outputs from upstream Apps should be merged with existing records
+befre being pushed to EarthRanger (ER) as part of a centralized data
+pipeline.
 
 ## Documentation
-*Enter here a detailed description of your App. What is it intended to be used for. Which steps of analyses are performed and how. Please be explicit about any detail that is important for use and understanding of the App and its outcomes. You might also refer to the sections below.*
+
+This App provides a MoveApps–EarthRanger integration for the **permanent
+storage and updating** of movement data that has been processed and
+annotated with features of interest - such as behavioural states or
+spatial cluster memberships - by upstream Apps. It is designed for use
+in scheduled workflows, where newly processed data needs to be merged
+with historical records and reliably stored in EarthRanger (ER).
+
+The current version is specifically focused on **cluster-level
+updating** - ensuring that the status of detected spatial clusters
+(`"active"` or `"closed"`) is correctly recognised, and that each
+associated location event is appropriately updated. Future versions may
+extend support for broader data-merging tasks with fewer constraints
+around cluster handling.
+
+The App performs three core tasks:
+
+1.  **Retrieve Historical Records**  
+    It fetches relevant subject-level movement data from ER based on the
+    current input, including:
+
+    - All historical observations associated wirh **active clusters**.
+
+    - **Unclustered** observations within a configurable `lookback`
+      window (i.e., a number of days before the earliest timestamp in
+      the input data).
+
+2.  **Merge Datasets**  
+    The newest upstream data is combined with historical observations,
+    with an emphasis on correctly updating cluster membership
+    information (see section on [cluster merging](#sec-clust-merging)
+    below for further details).
+
+3.  **Push to EarthRanger**  
+    The resulting dataset - containing both new and updated records - is
+    uploaded back to ER for permanent storage.
+
+Currently the App outputs an extended version of the input dataset,
+appending all location events associated with **currently active
+clusters**. These annotated, up-to-date subject-level location records,
+are intended for use in downstream Apps that perform cluster-based
+analysis, such as the [Avian Cluster
+Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2)
+and the [Cluster Importance
+Scoring](https://www.moveapps.org/apps/browser/e8f5b376-0858-4206-9861-e2cd5fcc8c41)
+Apps.
+
+### Cluster merging and updating process
+
+*\[Flesh out main details\]*
 
 ### Application scope
+
 #### Generality of App usability
-*State here if the App was developed for a specific species, taxon or taxonomic group, or to answer a specific question. How might it influence the scope and utility of the App. This information will help the user to understand why the App might be producing no or odd results.*
 
-*Examples:*
-
-This App was developed using data of birds. 
-
-This App was developed using data of red deer. 
-
-This App was developed for any taxonomic group. 
-
-This App was developed to identify kill sites, but can probably be used to identify any kind of location clusters like nests, dens or drinking holes.
+This App was originally developed using vulture movement data annotated
+with cluster memberships and behavioural categories. However, it can
+likely be applied to other taxonomic groups, provided the data follows a
+similar annotation structure.
 
 #### Required data properties
-*State here the required and/or optimal data properties for this App to perform properly.*
 
-*Examples:*
-
-This App is only applicable to data that reflect range resident behavior. 
-
-The data should have a fix rate of at least 1 location per 30 minutes. 
-
-The App should work for any kind of (location) data.
+At present, the App is only applicable to location datasets that have
+been pre-annotated with cluster membership information. Datasets lacking
+this structure will not be compatible with the App’s current update
+logic.
 
 ### Input type
-*Indicate which type of input data the App requires.*
 
-*Example*: `move2::move2_loc`
+A `move2::move2_loc` object.
 
 ### Output type
-*Indicate which type of output data the App produces to be passed on to subsequent Apps.*
 
-*Example:* `move2::move2_loc`
+A `move2::move2_loc` object.
 
 ### Artefacts
-*If the App creates artefacts (e.g. csv, pdf, jpeg, shapefiles, etc), please list them here and describe each.*
 
-*Example:* `rest_overview.csv`: csv-file with Table of all rest site properties
+None.
 
-### Settings 
-*Please list and define all settings/parameters that the App requires to be set by the App user, if necessary including their unit. Please first state the Setting name the user encounters in the Settings menu defined in the appspecs.json, and between brackets the argument used in the R function to be able to identify it quickly in the code if needed.*
+### Settings
 
-*Example:* `Radius of resting site` (radius): Defined radius the animal has to stay in for a given duration of time for it to be considered resting site. Unit: `metres`.
+*Please list and define all settings/parameters that the App requires to
+be set by the App user, if necessary including their unit. Please first
+state the Setting name the user encounters in the Settings menu defined
+in the appspecs.json, and between brackets the argument used in the R
+function to be able to identify it quickly in the code if needed.*
+
+*Example:* `Radius of resting site` (radius): Defined radius the animal
+has to stay in for a given duration of time for it to be considered
+resting site. Unit: `metres`.
 
 ### Changes in output data
-*Specify here how and if the App modifies the input data. Describe clearly what e.g. each additional column means.*
+
+*Specify here how and if the App modifies the input data. Describe
+clearly what e.g. each additional column means.*
 
 *Examples:*
 
-The App adds to the input data the columns `Max_dist` and `Avg_dist`. They contain the maximum distance to the provided focal location and the average distance to it over all locations. 
+The App adds to the input data the columns `Max_dist` and `Avg_dist`.
+They contain the maximum distance to the provided focal location and the
+average distance to it over all locations.
 
-The App filterers the input data as selected by the user. 
+The App filterers the input data as selected by the user.
 
-The output data is the outcome of the model applied to the input data. 
+The output data is the outcome of the model applied to the input data.
 
 The input data remains unchanged.
 
 ### Most common errors
-*Please describe shortly what most common errors of the App can be, how they occur and best ways of solving them.*
+
+*Please describe shortly what most common errors of the App can be, how
+they occur and best ways of solving them.*
 
 ### Null or error handling
-*Please indicate for each setting as well as the input data which behaviour the App is supposed to show in case of errors or NULL values/input. Please also add notes of possible errors that can happen if settings/parameters are improperly set and any other important information that you find the user should be aware of.*
 
-*Example:* **Setting `radius`:** If no radius AND no duration are given, the input data set is returned with a warning. If no radius is given (NULL), but a duration is defined then a default radius of 1000m = 1km is set. 
+*Please indicate for each setting as well as the input data which
+behaviour the App is supposed to show in case of errors or NULL
+values/input. Please also add notes of possible errors that can happen
+if settings/parameters are improperly set and any other important
+information that you find the user should be aware of.*
+
+*Example:* **Setting `radius`:** If no radius AND no duration are given,
+the input data set is returned with a warning. If no radius is given
+(NULL), but a duration is defined then a default radius of 1000m = 1km
+is set.
