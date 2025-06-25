@@ -51,8 +51,8 @@ The App performs three core tasks:
 2.  **Merge Datasets**  
     The newest upstream data is combined with historical observations,
     with an emphasis on correctly updating cluster membership
-    information (see section on [cluster
-    merging](#cluster-merging-and-updating) below for further details).
+    information (see further details on [cluster
+    merging](#cluster-merging-and-updating) below).
 
 3.  **Push to EarthRanger**  
     The resulting dataset - containing both new and updated records - is
