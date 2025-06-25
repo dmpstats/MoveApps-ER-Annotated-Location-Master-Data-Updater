@@ -43,7 +43,7 @@ The App performs three core tasks:
     It fetches relevant subject-level movement data from ER based on the
     current input, including:
 
-    - All historical observations associated wirh **active clusters**.
+    - All historical observations associated with **active clusters**.
 
     - **Unclustered** observations within a configurable `lookback`
       window (i.e., a number of days before the earliest timestamp in
@@ -103,47 +103,63 @@ None.
 
 ### Settings
 
-*Please list and define all settings/parameters that the App requires to
-be set by the App user, if necessary including their unit. Please first
-state the Setting name the user encounters in the Settings menu defined
-in the appspecs.json, and between brackets the argument used in the R
-function to be able to identify it quickly in the code if needed.*
+**EarthRanger API Server** (`api_hostname`): Hostname of the EarthRanger
+API server (e.g. ‘sandbox.pamdas.org’).
 
-*Example:* `Radius of resting site` (radius): Defined radius the animal
-has to stay in for a given duration of time for it to be considered
-resting site. Unit: `metres`.
+**EarthRanger API Key** (`api_token`): A valid and active access token
+for the selected EarthRanger API Server.
+
+**Cluster ID Column** (`cluster_id_col`): Name of the column in the
+input data that contains cluster IDs associated with location points.
+
+**Lookback (days)** (`lookback`): Number of days to look back from the
+earliest timestamp in the input data to retrieve unclustered historical
+observations for updating. Note: Observations assigned to active
+clusters are always retrieved automatically.
+
+**Attributes to store in EarthRanger** (`store_cols`): Comma- or
+semicolon-separated list of attribute names to store along each
+observation’s location and timestamp in EarthRanger. If `NULL`, all
+attributes are stored.
 
 ### Changes in output data
 
-*Specify here how and if the App modifies the input data. Describe
-clearly what e.g. each additional column means.*
+The App expands the input data by appending all historical location
+records associated with **currently active clusters**. Two additional
+columns also also introduced:
 
-*Examples:*
-
-The App adds to the input data the columns `Max_dist` and `Avg_dist`.
-They contain the maximum distance to the provided focal location and the
-average distance to it over all locations.
-
-The App filterers the input data as selected by the user.
-
-The output data is the outcome of the model applied to the input data.
-
-The input data remains unchanged.
+- `cluster_uuid` - the unique identifier of each cluster, as recorded in
+  the ER master dataset.
+- `cluster_state`- the current status of the cluster, either `"active"`
+  or `"closed"`.
 
 ### Most common errors
 
-*Please describe shortly what most common errors of the App can be, how
-they occur and best ways of solving them.*
+The App will stop and return an error under any of the following
+conditions:
+
+- Invalid API server: The hostname provided under **EarthRanger API
+  Server** is missing, incorrect, or unreachable. Make sure the server
+  address is correct and that you have access of the specified
+  EarthRanger instance.
+
+- Invalid API key: The value passed to **EarthRanger API Key** is
+  missing or invalid. Ensure you provide a valid access token linked to
+  an EarthRanger account with sufficient permissions to read and write
+  data.
+
+- The **Cluster ID Column** is missing (i.e. `NULL`) or the specified
+  value does not exist in the input dataset. Double-check that the
+  column name matches exactly (including case sensitivity) one of the
+  columns in the incoming data.
+
+- Errors may occur due to brief network interruptions or issues with the
+  MoveApps or ER hosting servers. However, such disruptions are expected
+  to be infrequent and short-lived, as both platforms are reliable and
+  well-maintained systems.
 
 ### Null or error handling
 
-*Please indicate for each setting as well as the input data which
-behaviour the App is supposed to show in case of errors or NULL
-values/input. Please also add notes of possible errors that can happen
-if settings/parameters are improperly set and any other important
-information that you find the user should be aware of.*
-
-*Example:* **Setting `radius`:** If no radius AND no duration are given,
-the input data set is returned with a warning. If no radius is given
-(NULL), but a duration is defined then a default radius of 1000m = 1km
-is set.
+- **Attributes to Store in EarthRanger**: If set to `NULL` (the
+  default), all attributes present in the input data will be passed to
+  EarthRanger and stored in the master dataset.
