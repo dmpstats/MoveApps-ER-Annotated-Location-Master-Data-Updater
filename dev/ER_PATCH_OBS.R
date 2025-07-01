@@ -54,6 +54,8 @@ ER_PATCH_OBS <- function(api_url,
   results <- observations_json_ready %>%
     split(~id) %>%
     purrr::map_int(function(observation) {
+      
+      browser()
     
       # Extract the observation ID
       observation_id <- observation$id[1]

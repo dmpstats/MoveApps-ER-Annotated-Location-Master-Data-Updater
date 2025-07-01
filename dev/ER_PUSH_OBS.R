@@ -88,6 +88,9 @@ ER_PUSH_OBS <- function(api_url,
   results <- observations_json_ready %>%
     split(~batch_id) %>%
     purrr::map_int(function(batch_data) {
+      
+      browser()
+      
       # Convert batch to JSON
       batch_json <- batch_data %>%
         jsonify::to_json(unbox = TRUE) %>%

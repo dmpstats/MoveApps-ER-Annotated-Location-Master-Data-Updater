@@ -36,9 +36,10 @@ ER_GET <- function(server,
         page_size = page_size,
         include_details = tolower(as.character(include_details)) # Convert logical to string
       ) |>
+      httr2::req_auth_bearer_token(token) |> 
       httr2::req_headers(
-        "accept" = "application/json",
-        "Authorization" = paste0('Bearer ', token)
+        "accept" = "application/json"#,
+        #"Authorization" = paste0('Bearer ', token)
       )
     
     # Perform the request
