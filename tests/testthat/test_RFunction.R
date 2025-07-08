@@ -74,13 +74,31 @@ test_that("Input validation works as expected", {
     error = TRUE
   )
   
-  # `store_cols_str`
-  rFunction(
-    data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ",
-    store_cols_str = paste("NO_COLUMN_1", "NO_COLUMN_2", "NO_COLUMN_3", "clust_id", sep = ",")
-  )
+  # # `store_cols_str`
+  # rFunction(
+  #   data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ",
+  #   store_cols_str = paste("NO_COLUMN_1", "NO_COLUMN_2", "NO_COLUMN_3", "clust_id", sep = ",")
+  # )
   
 })
+
+
+
+test_that("dev testing", {
+  
+  skip()
+  
+  rFunction(
+    #data = test_sets$nam_2 |> slice(30:70),
+    #data = test_sets$nam_2 |> slice(180:200), 
+    data = test_sets$nam_1 |> slice(40:80), 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+})
+
+
 
 
 

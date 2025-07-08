@@ -1,6 +1,6 @@
 #library(move2)
 #library(withr)
-#library(dplyr)
+library(dplyr)
 library(rlang)
 library(httr2)
 library(lubridate)
@@ -43,14 +43,14 @@ test_that("get_obs() dev testing", {
   get_obs(
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
     token = er_tokens$standrews.dev$brunoc, 
-    filter = 'null',
+    #filter = 'null',
     min_date = as.POSIXct("2000-01-01") - lubridate::days(50),
     max_date = NULL, 
     page_size = 100, 
     include_details = TRUE,
     created_after = NULL
   )
-  
+
 })
 
 
@@ -62,16 +62,18 @@ test_that("ra_post_obs() dev testing", {
   
   tm_id_col <- mt_time_column(test_sets$nam_1)
   trk_id_col <- mt_track_id_column(test_sets$nam_1)
-  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "cluster_status")
   
   dt <- test_sets$nam_1 |> 
     mutate(
       cluster_status = if_else(!is.na(clust_id), "active", NA),
       cluster_status = if_else(clust_id == "NAM.3", "closed", cluster_status)
+      #cluster_status = "close"
     ) |> 
     move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     as.data.frame() |> 
-    slice(21:150)
+    slice(1:50)
+  
     
   ra_post_obs(
     data = dt,
@@ -79,8 +81,8 @@ test_that("ra_post_obs() dev testing", {
     trk_id_col = trk_id_col, 
     store_cols = store_cols,
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-    token = er_tokens$standrews.dev$brunoc,
-    batch_size = 10
+    token = er_tokens$standrews.dev$brunoc#,
+    #batch_size = 20
   )
   
 })
@@ -99,18 +101,24 @@ test_that("send_new_obs() dev testing", {
   
   dt <- test_sets$nam_1 |> 
     mutate(
-      cluster_status = if_else(!is.na(clust_id), "active", NA),
-      cluster_status = if_else(clust_id == "NAM.3", "closed", cluster_status)
+      cluster_status = if_else(!is.na(clust_id), "ACTIVE", NA),
+      cluster_status = if_else(clust_id == "NAM.3", "CLOSED", cluster_status),
+      cluster_uuid = sub("NAM.", "CLST_", clust_id)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    group_by(cluster_uuid) |> 
+    mutate(
+      cluster_earliest_dttm = min(timestamp)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id, study_id) |> 
     as.data.frame() |> 
-    slice(21:25)
+    slice(1:50)
   
+  # append key cols from other App processing steps
+  store_cols <- c(store_cols, "cluster_uuid", "cluster_status", "cluster_earliest_dttm", "individual_id", "deployment_id", "study_id")
   
   send_new_obs(
-    new_dt = dt, 
+    post_dt = dt, 
     tm_id_col = tm_id_col, 
-    trk_id_col = trk_id_col, 
     store_cols = store_cols,
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
     token = er_tokens$standrews.dev$brunoc
