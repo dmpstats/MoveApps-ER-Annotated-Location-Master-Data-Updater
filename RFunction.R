@@ -36,7 +36,6 @@ active_flag <- bit64::as.integer64(1311673391471656960)
 #'    - "subject_name" == "individual_local_identifier"
 #'    - "recorded_at" == mt_time_column(data)
 
-
 rFunction = function(data, 
                      api_hostname = NULL,
                      api_token = NULL,
@@ -1340,41 +1339,31 @@ match_sf_clusters <- function(hist_dt,
     
     # And plot out
     # Top-level cluster plotting
-    matchplot <- ggplot() + 
-      theme_bw() +
-      geom_sf(data = new_centroids_buffered |> dplyr::filter(XTEMPCLUSTER %in% plot_matches$new_cluster), fill = NA, alpha = 0.15, linewidth = 0.1,
-              aes(color = "New Cluster", linetype = "Connection Radius")
+    matchplot <- ggplot2::ggplot() + 
+      ggplot2::theme_bw() +
+      ggplot2::geom_sf(data = new_centroids_buffered |> dplyr::filter(XTEMPCLUSTER %in% plot_matches$new_cluster), fill = NA, alpha = 0.15, linewidth = 0.1,
+                       ggplot2::aes(color = "New Cluster", linetype = "Connection Radius")
       ) +
-      geom_segment(data = plot_matches |> dplyr::filter(!is.na(new_cluster) & !is.na(master_cluster)),
+      ggplot2::geom_segment(data = plot_matches |> dplyr::filter(!is.na(new_cluster) & !is.na(master_cluster)),
                    aes(x = Xold, y = Yold, xend = Xnew, yend = Ynew, linetype = `Match Type`), linewidth = 0.6,
-                   arrow = arrow(length = unit(0.2, "cm")), size = 0.5) +
-      geom_label(data = plot_matches |> 
-                   dplyr::filter(!is.na(master_cluster)), 
-                 aes(x = Xold, y = Yold, 
-                     label = master_cluster, 
-                     color = "Master Cluster",
-                     fill = `Match Type`
-                 ), 
-                 size = 3) +
-      geom_label(data = plot_matches |> 
-                   dplyr::filter(!is.na(new_cluster)),
-                 aes(x = Xnew, y = Ynew, 
-                     label = new_cluster, 
-                     color = "New Cluster",
-                     fill = `Match Type`
-                 ), 
-                 size = 3) +
-      scale_color_manual(
+                   arrow = ggplot2::arrow(length = unit(0.2, "cm")), size = 0.5) +
+      ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(master_cluster)), 
+                          ggplot2::aes(x = Xold, y = Yold, label = master_cluster, color = "Master Cluster", fill = `Match Type`), 
+                          size = 3) +
+      ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(new_cluster)),
+                         aes(x = Xnew, y = Ynew, label = new_cluster, color = "New Cluster",fill = `Match Type`), 
+                         size = 3) +
+      ggplot2::scale_color_manual(
         name = "Cluster Type",
         values = c("Match" = "black", "Master Cluster" = "blue", "New Cluster" = "red")) +
-      scale_fill_manual(
+      ggplot2::scale_fill_manual(
         name = "Unmatched Clusters",
         values = c("Full" = "white", "Partial" = "white", "No Match" = "yellow")) +
-      scale_linetype_manual(
+      ggplot2::scale_linetype_manual(
         name = "Match Type",
         values = c("Full" = "solid", "Partial" = "dashed", "Connection Radius" = "dotted")) +
-      xlab("X") + ylab("Y") +
-      ggtitle("Cluster association map")
+      ggplot2::xlab("X") + ggplot2::ylab("Y") +
+      ggplot2::ggtitle("Cluster association map")
     # coord_fixed()
     
     # Point-level cluster plotting
@@ -1403,35 +1392,35 @@ match_sf_clusters <- function(hist_dt,
         by = "master_cluster"
       ) 
     
-    pointplot <- ggplot() + 
-      theme_bw() +
-      geom_segment(
+    pointplot <- ggplot2::ggplot() + 
+      ggplot2::theme_bw() +
+      ggplot2::geom_segment(
         data = prep_pts |> dplyr::filter(!is.na(master_cluster)), 
-        aes(
+        ggplot2::aes(
           x = pointX, y = pointY,
           xend = clusterXold, yend = clusterYold, color = "Master"
         ),
         linetype = "dashed"
       ) +
-      geom_segment(
+      ggplot2::geom_segment(
         data = prep_pts |> dplyr::filter(!is.na(master_cluster) & !is.na(XTEMPCLUSTER)),
-        aes(
+        ggplot2::aes(
           x = pointX, y = pointY,
           xend = clusterX, yend = clusterY, color = "New"
         )
       ) +
-      geom_point(
+      ggplot2::geom_point(
         data = prep_pts |> dplyr::filter(is.na(XTEMPCLUSTER)), 
         aes(x = pointX, y = pointY, color = "No Cluster"),
         shape = 4
       ) +
-      scale_color_manual(
+      ggplot2::scale_color_manual(
         name = "Cluster Type",
         values = c("Master" = "blue", "New" = "red", "No Cluster" = "black")
       ) +
-      coord_fixed() + 
-      xlab("X") + ylab("Y") +
-      ggtitle("Master Clusters [mapped to new centroids]")
+      ggplot2::coord_fixed() + 
+      ggplot2::xlab("X") + ggplot2::ylab("Y") +
+      ggplot2::ggtitle("Master Clusters [mapped to new centroids]")
     
     allplot <- cowplot::plot_grid(
       matchplot, pointplot,
@@ -1791,51 +1780,6 @@ merge_and_update <- function(matched_hist_dt,
   merged_dt
 }
  
-
-#' 
-#' 
-#' # ///////////////////////////////////////////////////////////////////////////////////////////////////
-#' #' Alternative approach to fetch observations in active clusters, as opposed to
-#' #' using exclusion flags
-#' fetch_obs_actv_clusters <- function(end_dttm, 
-#'                                     trunc_days = 90, 
-#'                                     api_base_url, 
-#'                                     token, 
-#'                                     page_size){
-#'   
-#'   # get all observations within 30 days from most recent observation in data
-#'   obs_30 <- get_obs(
-#'     api_base_url = api_base_url, 
-#'     token = token, 
-#'     min_date = end_dttm - lubridate::days(30), 
-#'     include_details = TRUE,
-#'     page_size = page_size
-#'   )
-#'   
-#'   # filter obs in active clusters in last 30 days
-#'   obs_30_actv <- obs_30 |> 
-#'     dplyr::filter(cluster_status == "ACTIVE")
-#'   
-#'   # Retrieve all observations since the earliest point date of the oldest active
-#'   # cluster or within `trunc_days` from latest observation in data . Implication
-#'   # is that active clusters lasting more the `trunc_days` get truncated
-#'   obs <- get_obs(
-#'     api_base_url = api_base_url, 
-#'     token = token, 
-#'     min_date = max(min(obs_30_actv$cluster_earliest_dttm), end_dttm - lubridate::days(trunc_days)),
-#'     include_details = TRUE,
-#'     page_size = page_size
-#'   )
-#'   
-#'   # Retain active clusters
-#'   dplyr::filter(obs, cluster_status == "ACTIVE")
-#'   
-#' }
-
-
-
-
-
 
 
 # /////////////////////////////////////////////////////////////////////////////
