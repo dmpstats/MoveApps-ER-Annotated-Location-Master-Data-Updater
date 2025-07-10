@@ -21,7 +21,7 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 
 er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
-active_flag <- bit64::as.integer64(1311673391471656960)
+#active_flag <- bit64::as.integer64(1311673391471656960)
 
 # Helper to delete observations in ER
 delete_obs <- function(obs_ids, token){
@@ -225,7 +225,7 @@ test_that("Data posted and retrieved as expected: handling of obs in ACTIVE clus
   
   # check values
   expect_equal(dt_retrieved_closed$lat, dt_closed$lat)
-  expect_equal(dt_retrieved_unclust$cluster_status, dt_unclustered$cluster_status)
+  expect_equal(dt_retrieved_unclust$cluster_status, dt_unclust$cluster_status)
   expect_equal(dt_retrieved_closed$cluster_status, dt_closed$cluster_status)
   expect_equal(ymd_hms(dt_retrieved_closed$recorded_at), dt_closed$timestamp)
   
