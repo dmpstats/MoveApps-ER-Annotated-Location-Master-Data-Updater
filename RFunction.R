@@ -18,16 +18,24 @@ library(ids)
 not_null <- Negate(is.null)
 
 
+#' OVERALL NOTES
+#' 
+#' Correspondence between ER == Move2 Attributes:
+#'    - "manufacturer_id" (defines a "source") == "tag_id" 
+#'    - "subject_name" == "individual_local_identifier"
+#'    - "recorded_at" == mt_time_column(data)
+
+
 rFunction = function(data, 
                      api_hostname = NULL,
                      api_token = NULL,
                      cluster_id_col = "clust_id",
                      lookback = 30L,
-                     store_cols_str = NULL#,
-                     # days_thresh = 7,
-                     # dist_thresh = units::set_units(100, "metres"),
-                     # match_criteria = "gmedian",
-                     # active_threshold
+                     store_cols_str = NULL,
+                     days_thresh = 7,
+                     dist_thresh = 100,
+                     match_criteria = "gmedian",
+                     active_days_thresh = 14
                      ) {
   
   # TODO's
@@ -145,7 +153,8 @@ rFunction = function(data,
   hist_dt <- fetch_hist(
     api_base_url = api_base_url,
     token = api_token, 
-    unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback)
+    unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback), 
+    page_size = 500
   )
   
   
@@ -154,24 +163,8 @@ rFunction = function(data,
   
   ## Perform clusters matching ------
   
-  if("cluster_uuid" %!in% names(hist_dt)){
+  if(not_null(hist_dt)){
     
-    logger.warn("  |- This is the inception run of a new data storage instance. This warning should only appear once!")
-    
-    #' COMEBACK
-    matched_dt <- list(
-      matched_master_data = hist_dt |> 
-        dplyr::select(dplyr::any_of(c(tm_id_col, cluster_id_col))) |> 
-        mutate(
-          cluster = .data[[cluster_id_col]],
-          master_cluster = .data[[cluster_id_col]],
-          .keep = "unused"
-        ),
-      match_table = NULL,
-      match_plot = NULL
-    )
-    
-  } else {
     ### Prepare historical data for merging
     hist_dt <- hist_dt |> 
       sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
@@ -182,9 +175,25 @@ rFunction = function(data,
       new_dt = data,
       cluster_id_col = cluster_id_col,
       timestamp_col = tm_id_col,
-      days_thresh = 7,
-      dist_thresh = units::set_units(100, "metres"),
-      match_criteria = "gmedian"
+      days_thresh = days_thresh,
+      dist_thresh = units::set_units(dist_thresh, "m"),
+      match_criteria = match_criteria
+    )
+    
+  } else {
+    ## hist_dt is NULL under some controlled situations. Check `fetch_hist()`
+    ## documentation. When that's the case we still need to generate an empty
+    ## object with a similar structure as the object returned by
+    ## `match_sf_clusters()` to perform the tasks below
+    matched_dt <- list(
+      matched_master_data = dplyr::tibble(
+        cluster_uuid = NA_character_, subject_name = NA_character_, manufacturer_id = NA_character_, 
+        recorded_at = NA_POSIXct_, er_obs_id = NA_character_, er_source_id = NA_character_, 
+        {{cluster_id_col}} := NA_character_, lon = NA_real_, lat = NA_real_
+      ) |> 
+        sf::st_as_sf(geometry = sf::st_sfc(sf::st_point(c(NA_real_, NA_real_)), crs = sf::st_crs(data))),
+      match_table = NULL,
+      match_plot = NULL
     )
   }
   
@@ -196,10 +205,11 @@ rFunction = function(data,
     cluster_id_col = cluster_id_col, 
     timestamp_col = tm_id_col, 
     store_cols = store_cols,
-    active_days_thresh = 14
-  )
-  
-  
+    active_days_thresh = active_days_thresh
+  ) |> 
+    # dropping row created above to deal with NULL `hist_dt`, identified as empty lat/lon
+    tidyr::drop_na(lat, lon) 
+    
   
   # Send new observations to ER  ----------------------------------------------
   logger.info("Uploading newly observed locations to ER.")
@@ -208,9 +218,9 @@ rFunction = function(data,
     dplyr::filter(request_type == "POST") |> 
     ra_post_obs(
       tm_id_col = tm_id_col, 
-      additional_cols = additional_cols, 
+      additional_cols =  c(store_cols, cluster_cols, mv2_track_cols), 
       api_base_url = api_base_url, 
-      token = token, 
+      token = api_token, 
       provider_key = "moveapps_ann_locs", 
       batch_size = 200
     )
@@ -222,33 +232,49 @@ rFunction = function(data,
   merged_dt |> 
     dplyr::filter(request_type == "PATCH") |> 
     patch_obs(
-      additional_cols = c(store_cols, key_cols),
+      additional_cols = c(store_cols, cluster_cols, mv2_track_cols),
       api_base_url = api_base_url, 
       token = api_token
     )
   
   
   # Prepare output data ------------------------------------------------------
-  # 1. keep only observations that are in active clusters (AND un-clustered?)
-  # 2. Coerce as <move2>
+  # 1. Spatial terms: project into same CRS as input data & set same name for geom column
+  # 2. Coerce as <move2>, with pre-specified and traced track columns
   logger.info("Preparing data for output")
   
-  ouput <- merged_dt |>
-    dplyr::filter(cluster_status %in% c("ACTIVE", "CLOSE")) |> 
-    move2::mt_as_move2()
-  
-  
+  output <- merged_dt |>
+    sf::st_transform(crs = sf::st_crs(data)) |> 
+    # safeguard against missing values in track_id
+    tidyr::replace_na(list(track_id =  "UNKNOWN")) |> 
+    # safeguard against missing values in track-level attributes within each
+    # track. Should be removable once the ER-MA data exchanges are streamlined
+    dplyr::mutate(
+     dplyr::across(any_of(mv2_track_cols), .fns = ~dplyr::first(.x, na_rm = TRUE)),
+     .by = track_id
+    ) |>
+    #dplyr::filter(cluster_status %in% c("ACTIVE", "CLOSE")) |> 
+    dplyr::select(dplyr::any_of(c(tm_id_col, store_cols, cluster_cols, mv2_track_cols))) |> 
+    move2::mt_as_move2(
+      time_column = tm_id_col, 
+      track_id_column = "track_id",
+      track_attributes = any_of(mv2_track_cols),
+      sf_column_name = sf_col
+    )
+ 
   logger.info(glue::glue("{symbol$star} Finished update to master location data in ER."))
   output
   
 }
 
 
+
+
 # -- Global objects =============================================================
 
-## Key "additional" attributes to track during the API and data merging logics 
-key_cols <- c("cluster_status", "cluster_uuid", "deployment_id", "individual_id", "track_id", "study_id")
-
+## Key attributes to trace during the API and data merging logics 
+cluster_cols <- c("cluster_status", "cluster_uuid")
+mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", "individual_id", "track_id", "study_id")
 
 
 # -- Helper Functions ===========================================================
@@ -309,7 +335,7 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #' @param token `<character>`, a valid authentication token used to authorize the
 #'   request.
 #' @param unclust_min_date `<POSIXt/POSIXct/POSIXlt>`, the start date-time for
-#'   filtering un-clustered observations (inclusive). If `NULL` (default, no
+#'   filtering un-clustered observations (inclusive). If `NULL` (default), no
 #'   lower date-time bound is applied.
 #' @param max_date `<POSIXt/POSIXct/POSIXlt>`, the end date-time for filtering
 #'   observations (inclusive). If `NULL` (default), no upper date-time bound is
@@ -327,7 +353,14 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #'      (`filter` == 1311673391471656960)
 #'      2. For a given time-window: observations tagged with closed clusters AND
 #'      un-clustered observations
-#' - Output: some ER-origin attributes are renamed to ensure compatibility with original 
+#'      
+#' @returns 
+#' Either a data frame, or a NULL object under the following conditions in ER's Observation Table:
+#'  - No records (i.e. 0 observations)
+#'  - Absence of attribute "cluster_uuid" in retrieved data
+#'  - All observations are in CLOSED clusters
+#'  
+#' Note: some ER-origin attributes are renamed to ensure compatibility with original 
 #'   `<move2>` data
 #' 
 fetch_hist <- function(api_base_url, 
@@ -355,8 +388,8 @@ fetch_hist <- function(api_base_url,
   )
   
   
-  # un-clustered and closed observations from min_date to max_date
-  obs_uncluster <- get_obs(
+  # get un-clustered and closed observations (tagged as non_excluded) from min_date to max_date
+  obs_cluster_non_excluded <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
     filter = 0,
@@ -365,21 +398,37 @@ fetch_hist <- function(api_base_url,
     created_after = NULL,
     include_details = include_details,
     page_size = page_size
-  ) 
+  )
   
-  # safeguard for the very first call to ER, when there is still no data stored
-  # in the expected format. So only filter out obs in "closed" clusters when
-  # "cluster_uuid" is available
-  if("cluster_uuid" %in% names(obs_uncluster)){
-    # keep only un-clustered observations (i.e. with no cluster UUID annotated)
-    obs_uncluster <- dplyr::filter(obs_uncluster, is.na(cluster_uuid))
+  
+  # Handle retrieved datasets -------------------------------------
+  # If some o the conditions are met, forces function to return NULL
+  
+  ## Case 1: both datasets are empty. Two possibilities in ER's Observations table:
+  ##   - No records available
+  ##   - All observations are tagged with exclusion_flags AND there is none of the obs are in ACTIVE clusters
+  if(nrow(obs_cluster_actv) == 0 && nrow(obs_cluster_non_excluded) == 0){
+    return(NULL)
   }
-  # if("cluster_status" %in% names(obs_uncluster)){
-  #   obs_uncluster <- dplyr::filter(obs_uncluster, is.na(cluster_status))
-  # }
+  
+  ## Case 2: No ACTIVE clusters, but non-excluded data present
+  if(nrow(obs_cluster_actv) == 0){
+    # "cluster_uuid" attribute not present (e.g. inaugural run)
+    if("cluster_uuid" %!in% names(obs_cluster_non_excluded)){
+      return(NULL)
+    }else{
+      # keep only un-clustered observations (i.e. with no cluster UUID annotated)
+      obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, is.na(cluster_uuid))
+    }
+    
+    # All observations are in CLOSED clusters
+    if(nrow(obs_cluster_non_excluded) == 0){
+      return(NULL)
+    }
+  }
   
   # stack-up the two datasets
-  obs <- dplyr::bind_rows(obs_cluster_actv, obs_uncluster)
+  obs <- dplyr::bind_rows(obs_cluster_actv, obs_cluster_non_excluded)
   
   
   # Retrieve required complementary data ----------------------------------
@@ -458,18 +507,24 @@ ra_post_obs <- function(data,
                         token, 
                         provider_key = "moveapps_ann_locs",
                         batch_size = 200){
-  
+
+  if(nrow(data) == 0){
+    logger.warn("  |- No observations to POST - skipping POSTing step.")
+    return(NULL)
+  }
+    
   # Pre-Processing --------------------------------------------------------
   # append API's endpoint for request
   api_endpnt <- file.path(api_base_url, "sensors/dasradioagent", provider_key, "status")
-  
+
   # Manipulate data for ER's RA POSTing -----------------------------------
   #   - add/rename required cols
   #   - format cols for json serialization
   #   - nest data for multiple observation POSTing
   #   - generate batch IDs for batch posting
-  dt_jsonable <- data |> #sf::st_drop_geometry()
-    data.frame() |> 
+  #   - flag obs in ACTIVE clusters with appropriate exclusion flags
+  dt_jsonable <- data |> 
+    data.frame() |>
     dplyr::mutate(
       # date-time cols formatted as ISO 8601 strings
       dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format(x, "%Y-%m-%d %X%z")),
@@ -485,13 +540,15 @@ ra_post_obs <- function(data,
       subject_type = "Wildlife",
       subject_subtype = "Unassigned", 
       #source_type = "tracking_device",
-      exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(1311673391471656960), as.integer64(0), missing = as.integer64(0)),
       .keep = "unused"
     )  |> 
+    dplyr::mutate(
+      exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(1311673391471656960), as.integer64(0), missing = as.integer64(0))
+    ) |> 
     tidyr::nest(
       location = c(lat, lon),
       additional = dplyr::any_of(additional_cols),
-      .by = c(recorded_at:subject_subtype, exclusion_flags)
+      .by = c(recorded_at:exclusion_flags)
     ) |> 
     dplyr::mutate(
       location = lapply(location, as.list),
@@ -719,7 +776,7 @@ get_obs <- function(api_base_url,
 # ///////////////////////////////////////////////////////////////////////////////
 #' Helper to fetch information about the transmitting device (i.e. manufactors ID)
 #' 
-#' @param src character, the UUID of the source
+#' @param src character, the UUID of the source (i.e. the tag ID)
 get_source_details <- function(src, api_base_url, token){
   
   req_url <- file.path(api_base_url, "source", src)
@@ -780,15 +837,36 @@ patch_obs <- function(data,
                       token){
   
   # Input Validation -----------------------------------------------------------
+  if(nrow(data) == 0){
+    logger.warn("  |- No observations to PATCH - skipping PATCHing step.")
+    return(NULL)
+  }
+  
   if ("er_obs_id" %!in% names(data)) {
     cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
   }
   
+  
+  # Pre-Processing --------------------------------------------------------
+  ## append API's endpoint for request
+  api_endpnt <- file.path(api_base_url, "sensors/dasradioagent", provider_key, "status")
+  
+  ## reformat columns with special classes, for JSON serialization
+  data <- data |> 
+    data.frame() |> 
+    dplyr::mutate(
+      # date-time cols formatted as ISO 8601 strings
+      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format(x, "%Y-%m-%d %X%z")),
+      # convert any columns of class integer64 to string
+      dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
+      #drop units
+      dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
+    )
+  
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
-  
+
   results <- data |> 
-    data.frame() |> 
     dplyr::group_split(er_obs_id) |> 
     purrr::map_int(
       function(obs){
@@ -1473,10 +1551,9 @@ merge_and_update <- function(matched_hist_dt,
   
   ## Bring subject- tag- study- level IDs attributes from to events-table
   new_dt <- new_dt |>
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id, study_id) |> 
+    move2::mt_as_event_attribute(dplyr::any_of(mv2_track_cols)) |> 
     # bind track ID
     dplyr::mutate(track_id = move2::mt_track_id(new_dt))
-    
   
   ## Rename ER-based key "Observation" columns in historic dataset 
   matched_hist_dt <- matched_hist_dt |> 
