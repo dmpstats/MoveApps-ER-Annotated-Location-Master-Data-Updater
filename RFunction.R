@@ -20,6 +20,15 @@ library(ids)
 not_null <- Negate(is.null)
 
 
+# Global objects 
+
+## Key attributes to trace during the API and data merging logics 
+cluster_cols <- c("cluster_status", "cluster_uuid")
+mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", "individual_id", "track_id", "study_id")
+
+active_flag <- bit64::as.integer64(1311673391471656960)
+
+
 #' OVERALL NOTES
 #' 
 #' Correspondence between ER == Move2 Attributes:
@@ -261,13 +270,6 @@ rFunction = function(data,
 
 
 
-# -- Global objects =============================================================
-
-## Key attributes to trace during the API and data merging logics 
-cluster_cols <- c("cluster_status", "cluster_uuid")
-mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", "individual_id", "track_id", "study_id")
-
-
 # -- Helper Functions ===========================================================
 
 check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, proceed_msg,  
@@ -370,7 +372,7 @@ fetch_hist <- function(api_base_url,
   obs_cluster_actv <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
-    filter = 1311673391471656960,
+    filter = active_flag,
     min_date = NULL, 
     max_date = max_date, 
     created_after = NULL,
@@ -539,7 +541,7 @@ ra_post_obs <- function(data,
       .keep = "unused"
     )  |> 
     dplyr::mutate(
-      exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(1311673391471656960), as.integer64(0), missing = as.integer64(0))
+      exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(active_flag), as.integer64(0), missing = as.integer64(0))
     ) |> 
     tidyr::nest(
       location = c(lat, lon),
@@ -874,8 +876,7 @@ patch_obs <- function(data,
         
         body_list <- list(
           locations = list(lat = obs[["lat"]], lon = obs[["lon"]]),
-          #exclusion_flags = obs[["exclusion_flags"]],
-          exclusion_flags = dplyr::if_else(obs[["cluster_status"]] == "ACTIVE", as.integer64(1311673391471656960), as.integer64(0), missing = as.integer64(0)),
+          exclusion_flags = dplyr::if_else(obs[["cluster_status"]] == "ACTIVE", as.integer64(active_flag), as.integer64(0), missing = as.integer64(0)),
           additional = as.list(obs[additional_cols])
         ) |> 
           # essentially, drop additional field if none is passed
