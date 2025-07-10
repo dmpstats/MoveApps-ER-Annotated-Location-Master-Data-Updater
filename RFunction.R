@@ -12,6 +12,8 @@ library(tidyr)
 library(Gmedian)
 library(bit64)
 library(ids)
+# library(cowplot)
+# library(ggplot2)
 
 # wee helpers
 `%!in%` <- Negate(`%in%`)
@@ -126,17 +128,6 @@ rFunction = function(data,
       ))
     }
   }
-  
-  # ### Introspecting the class/type of traced store_cols
-  # store_cols_profile <- purrr::map(store_cols, function(col){
-  #   x <- data[[col]]
-  #   data.frame(
-  #     store_col = col,
-  #     cls = class(x)[[1]], # top-level class
-  #     unts = ifelse(inherits(x, "units"), units::deparse_unit(x), NA)
-  #   )
-  # }) |> 
-  #   purrr::list_rbind()
   
   
   ## Build base URL --------
@@ -498,8 +489,6 @@ fetch_hist <- function(api_base_url,
 #' @details
 #' - RA-POST requests allow for automatic creation of new manufactor's/source ID 
 #' and subject's names
-#' - Requirements: "cluster_status", "tag_id" and "individual_local_identifier" MUST be in data so
-#'   that the ER request can be built
 ra_post_obs <- function(data, 
                         tm_id_col, 
                         additional_cols, 
@@ -511,6 +500,13 @@ ra_post_obs <- function(data,
   if(nrow(data) == 0){
     logger.warn("  |- No observations to POST - skipping POSTing step.")
     return(NULL)
+  }
+  
+  # input validation -------------------------------------------------------------------
+  req_cols <- c("cluster_status", "tag_id", "individual_local_identifier", "lat", "lon")
+  miss_cols <- req_cols[req_cols %!in% names(data)]
+  if (length(miss_cols) > 0) {
+    cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
   }
     
   # Pre-Processing --------------------------------------------------------
@@ -822,8 +818,9 @@ get_source_subjects <- function(src, api_base_url, token){
 #' 
 #' @param additional_cols names of columns to store in data in ER. If `NULL`
 #'   (default), the existing attributes in the "additional" field are preserved
-#'   (i.e. not PATCHed). If provided, the field will be fully overwritten with
-#'   the specified columns and their values — **use with caution**.
+#'   (i.e. not PATCHed). If provided, the "additional" field in ER's Observation
+#'   will be fully overwritten with the specified attributes and their values —
+#'   **use with caution**.
 #'   
 #'  @details
 #' General assumptions and scope:
@@ -842,14 +839,17 @@ patch_obs <- function(data,
     return(NULL)
   }
   
-  if ("er_obs_id" %!in% names(data)) {
-    cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
+  # if ("er_obs_id" %!in% names(data)) {
+  #   cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
+  # }
+  
+  req_cols <- c(additional_cols, "er_obs_id", "cluster_status", "lat", "lon")
+  miss_cols <- req_cols[req_cols %!in% names(data)]
+  if (length(miss_cols) > 0) {
+    cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
   }
   
-  
   # Pre-Processing --------------------------------------------------------
-  ## append API's endpoint for request
-  api_endpnt <- file.path(api_base_url, "sensors/dasradioagent", provider_key, "status")
   
   ## reformat columns with special classes, for JSON serialization
   data <- data |> 
@@ -874,7 +874,8 @@ patch_obs <- function(data,
         
         body_list <- list(
           locations = list(lat = obs[["lat"]], lon = obs[["lon"]]),
-          exclusion_flags = obs[["exclusion_flags"]],
+          #exclusion_flags = obs[["exclusion_flags"]],
+          exclusion_flags = dplyr::if_else(obs[["cluster_status"]] == "ACTIVE", as.integer64(1311673391471656960), as.integer64(0), missing = as.integer64(0)),
           additional = as.list(obs[additional_cols])
         ) |> 
           # essentially, drop additional field if none is passed
