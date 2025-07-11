@@ -13,13 +13,13 @@ if(rlang::is_interactive()){
   source("tests/app-testing-helpers.r")
   set_interactive_app_testing()
   app_key <- get_app_key()
+  er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 }
 
 
 test_sets <- test_path("data/vult_unit_test_data.rds") |> 
   httr2::secret_read_rds(key = I(app_key)) 
 
-er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
 #active_flag <- bit64::as.integer64(1311673391471656960)
 
@@ -254,6 +254,7 @@ test_that("Data patched as expected", {
     move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     slice(1:20)
   
+  # store posting date-time for later reference for GET requests based on "created_after"
   posting_dttm <- now()
   
   # post data

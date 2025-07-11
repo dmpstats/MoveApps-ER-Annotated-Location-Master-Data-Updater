@@ -20,8 +20,7 @@ app_key <- get_app_key()
 test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
 #map(test_dt, nrow)
 
-
-#test_dt <- read_rds("data/raw/input1_move2loc_LatLon.rds")
+er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
 
 # ---------------------------------------- #
@@ -30,17 +29,15 @@ test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key
 
 set_interactive_app_testing()
 
-
-out <- rFunction(
-  data = test_dt$nam_1 |> rename(latitude = lat, long = lon), 
-  api_hostname = "http://ret.tet.com", 
-  api_token = "hhhdhdhhsha", 
-  cluster_col = "clust_id", 
-  lookback = 30L, 
-  store_cols = c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
-  
-)
-
+# out <- rFunction(
+#   data = test_dt$nam_1 |> rename(latitude = lat, long = lon), 
+#   api_hostname = "http://ret.tet.com", 
+#   api_token = "hhhdhdhhsha", 
+#   cluster_col = "clust_id", 
+#   lookback = 30L, 
+#   store_cols = c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
+#   
+# )
 
 
 
@@ -49,11 +46,10 @@ out <- rFunction(
 # ----    MoveApps SDK testing          ----
 # ---------------------------------------- #
 
-# standard dataset with default inputs
-run_sdk(test_dt, where = "sunny Scotland")
-  
-(output <- readRDS("data/output/output.rds"))
-
+# # standard dataset with default inputs
+# run_sdk(test_dt, where = "sunny Scotland")
+#   
+# (output <- readRDS("data/output/output.rds"))
 
 
 
@@ -63,5 +59,5 @@ run_sdk(test_dt, where = "sunny Scotland")
 # ----    Automated Unit testing        ----
 # ---------------------------------------- #
 
-testthat::test_file("tests/testthat/test_RFunction.R")
+testthat::test_file("tests/testthat/test_ER-Callers.R")
 
