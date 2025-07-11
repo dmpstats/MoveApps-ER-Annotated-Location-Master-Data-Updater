@@ -20,12 +20,13 @@ library(ids)
 not_null <- Negate(is.null)
 
 
-# Global objects 
+# Global objects
 
 ## Key attributes to trace during the API and data merging logics 
 cluster_cols <- c("cluster_status", "cluster_uuid")
 mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", "individual_id", "track_id", "study_id")
 
+## Exclusion flag value to tag obs in ACTIVE clusters
 active_flag <- bit64::as.integer64(1311673391471656960)
 
 
@@ -70,6 +71,9 @@ rFunction = function(data,
       "{.arg api_token} must be an {.cls string}, not `NULL`."
     ))
   }
+  
+  ## `lookback`
+  if(!is.integer(lookback)) cli::cli_abort("{.arg lookback} must be an {.cls integer}.")
 
   ## `cluster_id_col`
   check_col_dependencies(
@@ -79,11 +83,9 @@ rFunction = function(data,
     suggest_msg = paste0(
       "Use clustering Apps such as {.href [Avian Cluster Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2)} ",
       "earlier in the workflow to generate the required column."),
-    proceed_msg = paste0("Finished check on required columns - all good!")
+    proceed_msg = paste0("Finished check on required columns in input data - all good!")
   )
-  
-  ## `lookback`
-  if(!is.integer(lookback)) cli::cli_abort("{.arg lookback} must be an {.cls integer}.")
+ 
   
   
   # Pre-processing ------------------------------------------------------
@@ -1012,11 +1014,7 @@ match_sf_clusters <- function(hist_dt,
   
   # Check that match_criteria is valid
   match_criteria <- rlang::arg_match(match_criteria)
-  
-  if ("cluster_uuid" %!in% names(hist_dt)) {
-    cli::cli_abort("Column {.val cluster_uuid} must be present in {.arg hist_dt}.")
-  }
-  
+
   # Check that the cluster_id_col exists in new data
   if (!cluster_id_col %in% names(new_dt)) {
     cli::cli_abort("Column {.val {cluster_id_col}} must be present in {.arg new_dt}.")
@@ -1031,6 +1029,11 @@ match_sf_clusters <- function(hist_dt,
     }
   }
   
+  
+  if ("cluster_uuid" %!in% names(hist_dt)) {
+    cli::cli_abort("Column {.val cluster_uuid} must be present in {.arg hist_dt}.")
+  }
+  
   # Check that column "recorded_at" exists in historic data and it's of class POSIXt
   if ("recorded_at" %!in% names(hist_dt)) {
     cli::cli_abort("Column {.val recorded_at} must be present in {.arg hist_dt}.")
@@ -1039,7 +1042,6 @@ match_sf_clusters <- function(hist_dt,
       cli::cli_abort("Values in column {.val recorded_at} of {.arg hist_dt} must inherit from class {.cls POSIXt}.")
     }
   }
-  
   
   if(!inherits(dist_thresh, "units")){
     cli::cli_abort("{.arg dist_thresh} must be a {.cls units} object.")
@@ -1306,7 +1308,6 @@ match_sf_clusters <- function(hist_dt,
   # originating from the old cluster 
   # and pointing to the new cluster
   if (plot_results) {
-    library(ggplot2)
     
     print("Preparing output cluster-matching plots")
     
@@ -1345,13 +1346,13 @@ match_sf_clusters <- function(hist_dt,
                        ggplot2::aes(color = "New Cluster", linetype = "Connection Radius")
       ) +
       ggplot2::geom_segment(data = plot_matches |> dplyr::filter(!is.na(new_cluster) & !is.na(master_cluster)),
-                   aes(x = Xold, y = Yold, xend = Xnew, yend = Ynew, linetype = `Match Type`), linewidth = 0.6,
-                   arrow = ggplot2::arrow(length = unit(0.2, "cm")), size = 0.5) +
+                   ggplot2::aes(x = Xold, y = Yold, xend = Xnew, yend = Ynew, linetype = `Match Type`), linewidth = 0.6,
+                   arrow = ggplot2::arrow(length = ggplot2::unit(0.2, "cm")), size = 0.5) +
       ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(master_cluster)), 
                           ggplot2::aes(x = Xold, y = Yold, label = master_cluster, color = "Master Cluster", fill = `Match Type`), 
                           size = 3) +
       ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(new_cluster)),
-                         aes(x = Xnew, y = Ynew, label = new_cluster, color = "New Cluster",fill = `Match Type`), 
+                         ggplot2::aes(x = Xnew, y = Ynew, label = new_cluster, color = "New Cluster",fill = `Match Type`), 
                          size = 3) +
       ggplot2::scale_color_manual(
         name = "Cluster Type",
@@ -1411,7 +1412,7 @@ match_sf_clusters <- function(hist_dt,
       ) +
       ggplot2::geom_point(
         data = prep_pts |> dplyr::filter(is.na(XTEMPCLUSTER)), 
-        aes(x = pointX, y = pointY, color = "No Cluster"),
+        ggplot2::aes(x = pointX, y = pointY, color = "No Cluster"),
         shape = 4
       ) +
       ggplot2::scale_color_manual(
@@ -1471,12 +1472,11 @@ calcGMedianSF <- function(data) {
 #' Cluster-aware Merging of Historic and New observations 
 #'   
 #' @param matched_hist_dt `<sf>`, the 'master' dataset (from ER) with clusters
-#'   matched to `new_dt` by `match_sf_clusters()`. It must contain columns
-#'   `"lat"` and `"lon"`.
+#'   matched to `new_dt` by `match_sf_clusters()`. 
 #' @param new_dt `<move2>`, the 'new' dataset (from MA) with some cluster matching
 #'   those in `matched_hist_dt`. It must contain columns `"lat"` and `"lon"`.
-#' @param cluster_id_col character, the name of the column in `new_dt` containing the
-#'   cluster ID annotations.
+#' @param cluster_id_col character, the name of the column in `matched_hist_dt`
+#'   and `new_dt` containing the cluster ID annotations.
 #' @param timestamp_col character, name of the column in `new_dt` that contains the
 #'   recording timestamps of each observation.
 #' @param active_days_thresh integer, if this many days have passed between a
@@ -1484,8 +1484,7 @@ calcGMedianSF <- function(data) {
 #'   the cluster will be marked as CLOSED. Otherwise, it will be ACTIVE.
 #'   Non-clustered obs will be NA.
 #'        
-#' @details
-#' 
+#' @details#' 
 #' In addition merging the two datasets, it performs the following tasks:
 #'  * Clusters status update ("ACTIVE" vs "CLOSED")
 #'  * UUID issuing for new clusters, while ensuring stable UUIDs for historical clusters
