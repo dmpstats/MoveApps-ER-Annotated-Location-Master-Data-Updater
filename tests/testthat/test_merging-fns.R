@@ -21,6 +21,7 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 
 
 
+# `match_sf_clusters()` -------------------------------------------------------
 
 test_that("match_sf_clusters() fails with invalid inputs", {
   
@@ -65,7 +66,7 @@ test_that("match_sf_clusters() fails with invalid inputs", {
   )
   
   
-  # missing columns
+  # missing columns in input data
   hist <- slice(test_sets$nam_1, 1:50)
   
   expect_snapshot(  
@@ -104,7 +105,6 @@ test_that("match_sf_clusters() fails with invalid inputs", {
     )
   )
   
-  
   # other inputs
   expect_snapshot(  
     match_sf_clusters(
@@ -132,23 +132,20 @@ test_that("match_sf_clusters() fails with invalid inputs", {
 
 
 
-
-test_that("`match_sf_clusters()` works as expected", {
+test_that("match_sf_clusters() works as expected", {
+  
+  testthat::local_edition(3)
   
   # prepare 
   hist <- test_sets$nam_1 |> 
     slice(1:50) |> 
     mutate(cluster_uuid = sub("NAM.", "CLST_", clust_id), .keep = "unused") |> 
-    rename(recorded_at = timestamp) |> 
-    mutate(
-      #cluster_first_dttm = min(recorded_at), 
-      .by = cluster_uuid
-    )
+    rename(recorded_at = timestamp) 
   
   # convert to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
   
-  # case 1: 2 matches (i.e 2 overlaping) + 2 new clusters
+  # case 1: 2 matches (i.e 2 overlapping) + 2 new clusters
   out <- match_sf_clusters(
     hist_dt = hist, 
     new_dt = slice(test_sets$nam_1, 30:100), 
@@ -175,7 +172,6 @@ test_that("`match_sf_clusters()` works as expected", {
   
   
   # case 3: 2 partial matches due to old cluster being annotated as 2 separate clusters in new data
-  
   ## forcing a "newly" detected cluster
   new <- slice(test_sets$nam_1, 40:50)
   new_trck <- move2::mt_track_data(new)
@@ -221,4 +217,131 @@ test_that("`match_sf_clusters()` works as expected", {
 
 
 
-#merge_and_update
+# `merge_and_update()` -------------------------------------------------------
+
+test_that("merge_and_update() case 1: 2 old clusters updated + 2 new clusters", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  
+  # prepare 
+  hist <- test_sets$nam_1 |> 
+    slice(1:50) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mutate(
+      cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      recorded_at = timestamp,
+      manufacturer_id = tag_id,
+      subject_name = individual_local_identifier,
+      er_obs_id = ids::uuid(n()),
+      .keep = "unused"
+      ) |> 
+    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+  
+  # convert hist to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  # set new data
+  new <- slice(test_sets$nam_1, 30:100)
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")[["matched_master_data"]]
+  
+  # run merging
+  out <- merge_and_update(
+    matched_hist_dt = matched_hist, 
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+
+  # CLST_1 gets expanded
+  expect_lt(
+    sum(hist$cluster_uuid == "CLST_1", na.rm = TRUE), 
+    sum(out$cluster_uuid == "CLST_1", na.rm = TRUE)
+  )
+  
+  # CLST_2 remains unchanged
+  expect_equal(
+    sum(hist$cluster_uuid == "CLST_2", na.rm = TRUE), 
+    sum(out$cluster_uuid == "CLST_2", na.rm = TRUE)
+  )
+  
+  # two new clusters
+  hist_clusts <- unique(na.omit(hist$cluster_uuid))
+  new_clusts <- unique(na.omit(out$cluster_uuid))
+  expect_length(setdiff(new_clusts, hist_clusts), 2)
+  
+  # number of POSTable obs equals number of new observations
+  expect_equal(
+    sum(out$request_type == "POST", na.rm = TRUE),
+    length(setdiff(out$event_id, hist$event_id))
+  )
+  
+})
+
+
+
+
+
+test_that("merge_and_update() Case 2: 2 old clusters unchanged + 1 new clusters", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  
+  # prepare
+  hist <- test_sets$nam_1 |> 
+    slice(1:50) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mutate(
+      cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      recorded_at = timestamp,
+      manufacturer_id = tag_id,
+      subject_name = individual_local_identifier,
+      er_obs_id = ids::uuid(n()),
+      .keep = "unused"
+    ) |> 
+    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+  
+  # convert hist to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  # set new data
+  new <- slice(test_sets$nam_1, 120:160)
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")[["matched_master_data"]]
+  
+  # run merging
+  out <- merge_and_update(
+    matched_hist_dt = matched_hist, 
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+  
+  # CLST_1 remains unchanged
+  expect_equal(
+    sum(hist$cluster_uuid == "CLST_1", na.rm = TRUE), 
+    sum(out$cluster_uuid == "CLST_1", na.rm = TRUE)
+  )
+  
+  # CLST_2 remains unchanged
+  expect_equal(
+    sum(hist$cluster_uuid == "CLST_2", na.rm = TRUE), 
+    sum(out$cluster_uuid == "CLST_2", na.rm = TRUE)
+  )
+  
+  # 1 new clusters
+  hist_clusts <- unique(na.omit(hist$cluster_uuid))
+  new_clusts <- unique(na.omit(out$cluster_uuid))
+  expect_length(setdiff(new_clusts, hist_clusts), 1)
+  
+  # number of POSTable obs equals number of new observations
+  expect_equal(
+    sum(out$request_type == "POST", na.rm = TRUE),
+    length(setdiff(out$event_id, hist$event_id))
+  )
+  
+})
