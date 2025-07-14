@@ -35,6 +35,43 @@
       "description": "Comma- or semicolon-separated list of attribute names to store along each observation's location and timestamp in EarthRanger. If `NULL`, all attributes are stored.",
       "defaultValue": null,
       "type": "STRING"
+    },
+    {
+      "id": "days_thresh",
+      "name": "Merging Time Threshold (days)",
+      "description": "The maximum length of time that can elapse between two clusters to allow them to merge. This is calculated between the final timestamp of the first cluster and the first timestamp of the second.",
+      "defaultValue": 7,
+      "type": "INTEGER"
+    },
+    {
+      "id": "dist_thresh",
+      "name": "Merging Spatial Threshold (metres)",
+      "description": "The maximum spatial distance between two cluster centroids to allow merging. If exceeded, the clusters will not be merged.",
+      "defaultValue": 100,
+      "type": "DOUBLE"    
+    },
+    {
+      "id": "match_criteria",
+      "name": "Spatial-Matching Criteria",
+      "description": "Whether clusters should be spatially matched-and-merged by their cluster centroids (centroid) or geometric medians (gmedian). Geometric median is recommended.",
+      "defaultValue": "gmedian",
+      "type": "DROPDOWN",
+      "options": [
+        {
+          "value": "gmedian",
+          "displayText": "Geometric Median"
+        },
+        {
+          "value": "centroid",
+          "displayText": "Cluster Centroid"
+        }
+    },
+    {
+      "id": "active_days_thresh",
+      "name": "Closure Threshold (days)",
+      "description": "How many days have passed between a cluster's most recent observation and the overall most recent observation for the cluster to be classified as CLOSED. Any cluster marked as CLOSED cannot be re-merged or edited in future iterations.",
+      "defaultValue": 14,
+      "type": "INTEGER"
     }
   ],
     "documentation": {

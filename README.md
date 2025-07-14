@@ -18,7 +18,7 @@ membership - and needs to be saved over time.
 
 It is particularly useful in scheduled or automated workflows, where
 recent outputs from upstream Apps should be merged with existing records
-befre being pushed to EarthRanger (ER) as part of a centralized data
+before being pushed to EarthRanger (ER) as part of a centralized data
 pipeline.
 
 ## Documentation
@@ -70,7 +70,45 @@ Apps.
 
 ### Cluster merging and updating
 
-*\[Flesh out main details\]*
+A large section of this MoveApp is committed to merging clusters stored
+on the EarthRanger with ‘new’ clusters identified through the MoveApps
+workflow.
+
+The merging process is spatiotemporal. First, a comparison of all
+available clusters identifies all combinations of clusters that are
+within: A) *dist_thresh* of one another’s centroids or geometric medians
+B) Occuring within *days_thresh* of one another’s timestamps
+i.e. fulfilling both the spatial- and temporal- criteria.
+
+In the event of a two-to-one match (two clusters merging/splitting into
+one), each individual observation is assigned to the spatially-nearest
+cluster centroid.
+
+‘Ongoing’ clusters (i.e. clusters that pre-existed in the EarthRanger
+dataset) retain their existing UUID; ‘new’ clusters are assigned a
+newly-generated UUID.
+
+### Posting to EarthRanger
+
+We expect there to be a large number of duplicate observations between
+both datasets: for example, an observation might exist on the
+EarthRanger server, but then be clustered once more by the MoveApps
+workflow. In this case, we retain the ‘updated’ data associated with
+this observation, but continue to associate it with the same observation
+ID on EarthRanger.
+
+This is performed by splitting the data into `POST` data,
+i.e. observations that do not yet exist on EarthRanger and need to be
+posted, and `PATCH`, data, i.e. observations that *already* exist on
+EarthRanger and only need some associated attributes to be updated.
+
+Any cluster whose final timestamp was over `active_days_thresh` days
+BEFORE the most recent observation timestamp is marked as *CLOSED*. This
+means that future runs of this MoveApp will no longer call observations
+associated with this cluster: it is assumed to be a concluded event, and
+data associated with it will no longer be replaced by updated
+attributes. This is implemented to prevent the APIs from calling
+excessive volumes of data on each iteration.
 
 ### Application scope
 
