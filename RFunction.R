@@ -201,7 +201,7 @@ rFunction = function(data,
   
   ## Conciliate & merge datasets -----------
   merged_dt <- merge_and_update(
-    matched_hist_dt = matched_dt$matched_master_data, 
+    matched_dt = matched_dt, 
     new_dt = data, 
     cluster_id_col = cluster_id_col, 
     timestamp_col = tm_id_col, 
@@ -1471,20 +1471,27 @@ calcGMedianSF <- function(data) {
 # ////////////////////////////////////////////////////////////////////////////////
 #' Cluster-aware Merging of Historic and New observations 
 #'   
-#' @param matched_hist_dt `<sf>`, the 'master' dataset (from ER) with clusters
-#'   matched to `new_dt` by `match_sf_clusters()`. 
-#' @param new_dt `<move2>`, the 'new' dataset (from MA) with some cluster matching
-#'   those in `matched_hist_dt`. It must contain columns `"lat"` and `"lon"`.
-#' @param cluster_id_col character, the name of the column in `matched_hist_dt`
-#'   and `new_dt` containing the cluster ID annotations.
+#' @param matched_dt an `<cluster_matching_results>` object, the output from
+#'   `match_sf_clusters()` containing the matching between the historical data
+#'   (fetched from ER) and the most recent workflow-processed data (here also
+#'   procided as `new_dt`).
+#' @param new_dt `<move2>`, the 'new' dataset (from MA) with some cluster
+#'   matching those in `matched_dt`. It must contain columns `"lat"` and
+#'   `"lon"`.
+#' @param cluster_id_col character, the name of the column in
+#'   `matched_dt$matched_hist_dt` and `new_dt` containing the cluster ID
+#'   annotations.
 #' @param timestamp_col character, name of the column in `new_dt` that contains the
 #'   recording timestamps of each observation.
+#' @param store_cols string vector, names of columns chosen by user to store in
+#'   ER as additional attributes. Here used to access if any of these attributes
+#'   have changed in order to be flagged as PATCHable.
 #' @param active_days_thresh integer, if this many days have passed between a
 #'   cluster's most recent observation and the overall most recent observation,
 #'   the cluster will be marked as CLOSED. Otherwise, it will be ACTIVE.
 #'   Non-clustered obs will be NA.
 #'        
-#' @details#' 
+#' @details
 #' In addition merging the two datasets, it performs the following tasks:
 #'  * Clusters status update ("ACTIVE" vs "CLOSED")
 #'  * UUID issuing for new clusters, while ensuring stable UUIDs for historical clusters
@@ -1493,7 +1500,7 @@ calcGMedianSF <- function(data) {
 #' @return
 #' An `<sf>` object with updated cluster information and API request requirements
 #'  
-merge_and_update <- function(matched_hist_dt,
+merge_and_update <- function(matched_dt,
                              new_dt,
                              cluster_id_col,
                              timestamp_col,
@@ -1506,7 +1513,17 @@ merge_and_update <- function(matched_hist_dt,
   if(!move2::mt_is_move2(new_dt)){
     cli::cli_abort("{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}.")
   }
-
+  
+  if(!inherits(matched_dt, "cluster_matching_results")){
+    cli::cli_abort(c(
+      "{.arg matched_dt} must be an object of class {.cls cluster_matching_results}, not {.cls {class(matched_dt)}}.",
+      "i" = "Use {.fn match_sf_clusters} to produce the expected {.cls cluster_matching_results} object."
+    ))
+  }
+  
+  matched_hist_dt <- matched_dt$matched_hist_dt
+  match_tbl <- matched_dt$match_tbl
+  
   ## Check that required columns are present
   new_req_cols <- c(cluster_id_col, timestamp_col, "lon", "lat")
   new_miss_cols <- new_req_cols[new_req_cols %!in% names(new_dt)]
@@ -1515,8 +1532,8 @@ merge_and_update <- function(matched_hist_dt,
   }
   
   hist_req_cols <- c(
-    cluster_id_col, "cluster_uuid", "subject_name", "manufacturer_id", "recorded_at", "er_obs_id", 
-    "er_source_id", "lon", "lat"
+    cluster_id_col, "cluster_uuid", "cluster_status", "subject_name", 
+    "manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
   )
   hist_miss_cols <- hist_req_cols[hist_req_cols %!in% names(matched_hist_dt)]
   if (length(hist_miss_cols) > 0) {
@@ -1527,15 +1544,7 @@ merge_and_update <- function(matched_hist_dt,
   logger.info("Performing data merging")
   logger.info(sprintf("  |- Sorting %d masterobs and %d newobs", nrow(matched_hist_dt), nrow(new_dt)))
   
-  # Ensure that at least one cluster ID is present in both datasets
-  # to ensure we have some form of consistency
-  if (length(intersect(matched_hist_dt[[cluster_id_col]] |> na.omit() |> as.vector(),
-                       new_dt[[cluster_id_col]] |> na.omit() |> as.vector()
-  )) == 0) {
-    logger.warn("  |- No common cluster IDs found between historic and new data. Check that matching has been effective")
-  }
-  
-  
+
   # Homogenise datasets for binding ------------------------
   # i.e. coerce column formatting of historic dataset to new data
   
@@ -1629,20 +1638,29 @@ merge_and_update <- function(matched_hist_dt,
   # retain ALL other data in most recent data to the ER observation, as it may
   # have been updated.
   merged_dt <- alldata |> 
+    dplyr::rename(
+      cluster_uuid_hist = cluster_uuid,
+      cluster_status_hist = cluster_status
+    ) |> 
     dplyr::group_by(XTEMPUNIQUEID) |> 
     dplyr::mutate(
       # Duplicate the non-NA observation_id and source_id across the whole group
-      er_source_id = first(er_source_id[!is.na(er_source_id)]),
-      er_obs_id = first(er_obs_id[!is.na(er_obs_id)]),
-      cluster_uuid = first(cluster_uuid[!is.na(cluster_uuid)]),
+      er_source_id = dplyr::first(er_source_id, na_rm = TRUE),
+      er_obs_id = dplyr::first(er_obs_id, na_rm = TRUE),
+      #XTEMPCLUSTERCOL = first(XTEMPCLUSTERCOL, na_rm = TRUE),
+      # retain the hist cluster uuid, if present
+      cluster_uuid_hist = first(cluster_uuid_hist, na_rm = TRUE),
+      cluster_status_hist = first(cluster_status_hist, na_rm = TRUE),
       # flag for unchanged columns in `store_cols` so that they are excluded from PATCHing
       STORECOLSMODIFIED = dplyr::n_distinct(across(any_of(store_cols))) > 1,
-      cluster_merge_status = get_cluster_merge_status(XTEMPCLUSTERCOL, CLUSTERORIGIN)
+      # tag new obs - will be those with an NA as observation_id.
+      NEWOBS = ifelse(is.na(er_obs_id), TRUE, FALSE)
     ) |> 
     dplyr::filter(                        
       CLUSTERORIGIN == "NEW" | (CLUSTERORIGIN == "MASTER" & XTEMPCOUNT == 1)
     ) |> 
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
+  
   
   
   # Classify Cluster Status -------------------------------------
@@ -1669,51 +1687,72 @@ merge_and_update <- function(matched_hist_dt,
         "CLOSED"
       ),
       # But if the cluster is NA, set it to NA
-      cluster_status = ifelse(is.na(XTEMPCLUSTERCOL), NA, cluster_status)
+      cluster_status = ifelse(is.na(XTEMPCLUSTERCOL), NA, cluster_status),
+      CLUSTERSTATUSCHANGED = if_else(cluster_status != cluster_status_hist, TRUE, FALSE)
     ) |> 
     dplyr::ungroup()
   
   
   # Handle Cluster UUIDs  -------------------------------------------
   
-  ## Count number of unique non-NA clusters
-  clusters_hist <- merged_dt |> 
-    data.frame() |> 
-    count(cluster_uuid) |> 
-    dplyr::filter(!is.na(cluster_uuid))
-  
-  ## Issue UUIDs to freshly formed clusters
-  cluster_uuids_map <- merged_dt |> 
-    data.frame() |> 
-    dplyr::filter(!is.na(XTEMPCLUSTERCOL)) |> 
-    distinct(XTEMPCLUSTERCOL, cluster_uuid) |> 
-    mutate(
-      cluster_uuid = ifelse(
-        all(is.na(cluster_uuid)), 
-        paste(
-          #ids::sentence(style = "camel"), 
-          ids::adjective_animal(n_adjectives = 2, style = "camel"),
-          format(Sys.time(), "%Y%m%d-%H%M%S"), 
-          sep = "-"),
-        #ids::uuid(use_time = TRUE), 
-        cluster_uuid),
-      .by = XTEMPCLUSTERCOL
+  ## New UUIDs issued based on match table, with data grouped by hist cluster
+  ## IDs (here provided in col `master_cluster`, as a legacy of
+  ## `match_sf_clusters()`)
+  match_tbl <- match_tbl |> 
+    dplyr::group_by(master_cluster) |> 
+    dplyr::mutate(
+      cluster_uuid = dplyr::case_when(
+        # if present, an existent UUID is always retained
+        dplyr::row_number() == 1 & !is.na(master_cluster) ~ dplyr::first(master_cluster, na_rm = TRUE),
+        # next, dealing with duplicates, generated from 2:1 matches
+        dplyr::row_number() > 1 & !is.na(master_cluster) ~ generate_uuid(),
+        # issuing new UUIDs for new clusters
+        is.na(master_cluster) ~ generate_uuid(dplyr::n())
+      )
     ) |> 
-    distinct()
+    dplyr::ungroup()
   
-  ## Update cluster UUIDs and their earliest points in merged data
+  ## Join match_tbl to merged data
+  ## NOTE: "new_cluster" contains all the current clusters, old and new
+  merged_dt <- left_join(merged_dt, match_tbl, by = c("XTEMPCLUSTERCOL" = "new_cluster"))
+  
+  
+  # Classify obs cluster-merging status ----------------------------------------
+  
+  ## Combine information on historic and new UUIDs to work out observation-level
+  ## changes in cluster membership. 
+  ## NOTE: cluster annotation in historical data is retained in `cluster_uuid_hist`
   merged_dt <- merged_dt |> 
-    # drop "outdated" cluster UUID column
-    dplyr::select(-cluster_uuid) |>
-    # merge updated cluster UUID column
-    left_join(cluster_uuids_map, by = "XTEMPCLUSTERCOL")
-    
-  ## Run Checks and log summaries
+    dplyr::mutate(
+      cluster_merge_status = dplyr::case_when(
+        # obs remained in same cluster
+        !is.na(cluster_uuid_hist) & (cluster_uuid_hist == cluster_uuid) ~ "RETAINED",
+        # obs changed cluster membership
+        !is.na(cluster_uuid_hist) & (cluster_uuid_hist != cluster_uuid) ~ "TRANSFERRED",
+        # obs dropped from a cluster
+        !is.na(cluster_uuid_hist) & is.na(cluster_uuid) ~ "DROPPED",
+        # old obs remained non-clustered + memberless new obs
+        is.na(cluster_uuid_hist) & is.na(cluster_uuid) ~ "NONCLUSTERED",
+        # non-clustered old obs becomes affiliated to a cluster 
+        !NEWOBS & is.na(cluster_uuid_hist) & !is.na(cluster_uuid) ~ "RECRUITED",
+        NEWOBS & !is.na(cluster_uuid) ~ "ENTRANT"
+        #is.na(cluster_uuid_hist) & !is.na(cluster_uuid) ~ "ENTRANT"
+      )
+    )
+
+  # Run Checks and log summaries  ------------------------------------------
   clusters_merge <- merged_dt |> 
     data.frame() |> 
     count(cluster_uuid) |> 
     dplyr::filter(!is.na(cluster_uuid))
-
+  
+  ## Count number of unique non-NA clusters
+  clusters_hist <- matched_hist_dt |>
+    data.frame() |>
+    count(cluster_uuid) |>
+    dplyr::filter(!is.na(cluster_uuid))
+  
+  # check number of clusters
   if(nrow(clusters_merge) < nrow(clusters_hist)){
     cli::cli_abort(c(
       "Unexpectedly low number of clusters in merged data.",
@@ -1722,6 +1761,12 @@ merge_and_update <- function(matched_hist_dt,
     ))
   }
   
+  ## check obs merge status 
+  if(any(is.na(merged_dt$cluster_merge_status))){
+    logger.warn("NAs found in observations' merge status; they may not match classification logic.")
+  }
+  
+  ## merge summary
   merge_summ <- dplyr::full_join(clusters_hist, clusters_merge, by = "cluster_uuid") |> 
     dplyr::mutate(diff = n.y - n.x)
   
@@ -1735,19 +1780,51 @@ merge_and_update <- function(matched_hist_dt,
     sum(is.na(merge_summ$n.x))
   ))
   
+  ## Status check and summary
+  status_summ <- merged_dt |> 
+    data.frame() |> 
+    filter(cluster_status == "CLOSED") |> 
+    count(cluster_uuid)
+  
+  if(nrow(status_summ) > 0){
+    
+    purrr::walk(status_summ$cluster_uuid, function(x){
+      cluster_dt <- filter(merged_dt, cluster_uuid == x)
+      if(any(cluster_dt$cluster_status != "CLOSED")){
+        cli::cli_abort(c(
+          "Some observations in cluster {.val {x}} are not correctly annotated as {.val CLOSED}.",
+          x = "Cluster {.val {x}} is now {.val CLOSED}; all its members must be updated accordingly."
+        ))
+      }
+    })
+    
+    logger.info(
+      glue::glue_collapse(
+        c("  |- Closing the following cluster(s):", 
+          glue::glue_data(
+            status_summ,
+            "           * {cluster_uuid} (n = {n})" 
+          )
+        ), 
+        sep = "\n")
+      ) 
+  }
+  
+  
   
   # Annotate patching and posting ----------------------------------------
   
   # We now want to annotate data into PATCH and POST data for API processing. 
-  # - POSTable obs will be those with an NA as observation_id.
+  # - All new oobservations will POSTable.
   # - PATCHable obs will be those that have changed their cluster membership status 
-  #   snice previous run or whose `store_cols` have changed
+  #   since previous run or whose `store_cols` have changed
   merged_dt <- merged_dt |> 
     dplyr::mutate(
       request_type = dplyr::case_when(
-        is.na(er_obs_id) ~ "POST",
+        NEWOBS ~ "POST",
+        #is.na(er_obs_id) ~ "POST",
         cluster_merge_status %in% c("RECRUITED", "TRANSFERRED", "DROPPED") ~ "PATCH",
-        !is.na(er_obs_id) & STORECOLSMODIFIED ~ "PATCH",
+        (!NEWOBS & STORECOLSMODIFIED) | CLUSTERSTATUSCHANGED ~ "PATCH",
         .default = NA_character_
       )
     )
@@ -1773,7 +1850,8 @@ merge_and_update <- function(matched_hist_dt,
   merged_dt <- merged_dt |> 
     dplyr::select(-any_of(c(
       "MAXTIMESTAMP", "XTEMPCOUNT", "XTEMPUNIQUEID", "XTEMPCLUSTERCOL", 
-      "XTEMPTIMECOL", "XTEMPIDCOL", "STORECOLSMODIFIED", "CLUSTERORIGIN"
+      "XTEMPTIMECOL", "XTEMPIDCOL", "STORECOLSMODIFIED", "CLUSTERORIGIN", 
+      "NEWOBS", "CLUSTERSTATUSCHANGED"
     )))
   
   merged_dt
@@ -1789,51 +1867,39 @@ is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE))
 
 
 
-# helper to classify the cluster merging status observation based on clusters
-# IDs. To be used specifically after binding the historic an the new datasets.
-# `x` is a character vector
-get_cluster_merge_status <- function(cluster, source){
-  
-  out <- if(length(cluster) == 1){
-    # single entry, i.e. only present in either hist or new dataset
-    if(is.na(cluster)) {
-      # no cluster annotation, so unclustered
-      "NONCLUSTERED"
-    } else if (source == "MASTER"){
-      # in historical data, so no change
-      "RETAINED"
-    } else if (source == "NEW"){
-      # in new data, thus added to existent cluster or a founding member of new cluster 
-      "ENTRANT"
-    }
-    
-  } else if(length(cluster) == 2){  
-    # duplicate, i.e. observation present in hist and new datasets. Assigned
-    # status denote type of change since previous run
-    if(is.na(cluster[1]) && is.na(cluster[2])){
-      # obs remains unclustered
-      "NONCLUSTERED"
-    } else if (is.na(cluster[1]) && !is.na(cluster[2])){
-      # unclustered obs recruited to a cluster
-      "RECRUITED"
-    } else if(!is.na(cluster[1]) && is.na(cluster[2])){
-      # clustered obs became unclustered
-      "DROPPED"
-    } else if(cluster[1] !=  cluster[2]){
-      # clustered obs changed affiliation
-      "TRANSFERRED"
-    } else if(cluster[1] ==  cluster[2]){
-      # clustered obs remains in same cluster
-      "RETAINED"
-    } else{
-      # undetermined status
-      NA_character_
-    }
-  } else {
-    # more than two entries for the obs, which is unexpected 
-    # returning NA for the moment, but might raise an error/warning in future
-    NA_character_
-  } 
-  
-  out
+# ## Issue UUIDs to freshly formed clusters
+# cluster_uuids_map <- merged_dt |> 
+#   data.frame() |> 
+#   dplyr::filter(!is.na(XTEMPCLUSTERCOL)) |> 
+#   distinct(XTEMPCLUSTERCOL, cluster_uuid) |> 
+#   mutate(
+#     cluster_uuid = ifelse(
+#       all(is.na(cluster_uuid)), 
+#       paste(
+#         #ids::sentence(style = "camel"), 
+#         ids::adjective_animal(n_adjectives = 2, style = "camel"),
+#         format(Sys.time(), "%Y%m%d-%H%M%S"), 
+#         sep = "-"),
+#       #ids::uuid(use_time = TRUE), 
+#       cluster_uuid),
+#     .by = XTEMPCLUSTERCOL
+#   ) |> 
+#   distinct()
+# 
+# ## Update cluster UUIDs and their earliest points in merged data
+# merged_dt <- merged_dt |> 
+#   # drop "outdated" cluster UUID column
+#   dplyr::select(-cluster_uuid) |>
+#   # merge updated cluster UUID column
+#   left_join(cluster_uuids_map, by = "XTEMPCLUSTERCOL")
+
+
+
+
+# wee wrapper to make UUID issuing tidyer in main function
+generate_uuid <- function(n = 1){
+  paste(
+    ids::adjective_animal(n = n, n_adjectives = 2, style = "camel"),
+    format(Sys.time(), "%Y%m%d-%H%M%S"), 
+    sep = "-")
 }
