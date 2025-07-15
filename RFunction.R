@@ -164,40 +164,23 @@ rFunction = function(data,
   
   ## Perform clusters matching ------
   
+  ### Prepare historical data for merging
   if(not_null(hist_dt)){
-    
-    ### Prepare historical data for merging
     hist_dt <- hist_dt |> 
       sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
-    
-    ### match clusters
-    matched_dt <- match_sf_clusters(
-      hist_dt = hist_dt,
-      new_dt = data,
-      cluster_id_col = cluster_id_col,
-      timestamp_col = tm_id_col,
-      days_thresh = days_thresh,
-      dist_thresh = units::set_units(dist_thresh, "m"),
-      match_criteria = match_criteria
-    )
-    
-  } else {
-    ## hist_dt is NULL under some controlled situations. Check `fetch_hist()`
-    ## documentation. When that's the case we still need to generate an empty
-    ## object with a similar structure as the object returned by
-    ## `match_sf_clusters()` to perform the tasks below
-    matched_dt <- list(
-      matched_master_data = dplyr::tibble(
-        cluster_uuid = NA_character_, subject_name = NA_character_, manufacturer_id = NA_character_, 
-        recorded_at = NA_POSIXct_, er_obs_id = NA_character_, er_source_id = NA_character_, 
-        {{cluster_id_col}} := NA_character_, lon = NA_real_, lat = NA_real_
-      ) |> 
-        sf::st_as_sf(geometry = sf::st_sfc(sf::st_point(c(NA_real_, NA_real_)), crs = sf::st_crs(data))),
-      match_table = NULL,
-      match_plot = NULL
-    )
   }
-  
+   
+  ### match clusters
+  matched_dt <- match_sf_clusters(
+    hist_dt = hist_dt,
+    new_dt = data,
+    cluster_id_col = cluster_id_col,
+    timestamp_col = tm_id_col,
+    days_thresh = days_thresh,
+    dist_thresh = units::set_units(dist_thresh, "m"),
+    match_criteria = match_criteria
+  )
+
   
   ## Conciliate & merge datasets -----------
   merged_dt <- merge_and_update(
@@ -968,7 +951,7 @@ patch_obs <- function(data,
 #' @return a list with elements:
 #'   - `matched_master_data`: an `<sf>` object with the same nr of rows as 
 #'   `hist_dt` with appended cluster-level info and matching cluster ID in the `new_dt`
-#'   - `match_table`: a data frame with match information between the two datasets
+#'   - `match_tbl`: a data frame with match information between the two datasets
 #'   - `match_plot`: (optional) diagnostic plots with visualization of returned 
 #'   cluster matching
 #'      
@@ -984,6 +967,32 @@ match_sf_clusters <- function(hist_dt,
   
   logger.info("Matching Spatial Clusters")
   
+  
+  # If historical data is empty, skip everything and return standardized <cluster_matching_results> object
+  if (is.null(hist_dt) || nrow(hist_dt) == 0) {
+    
+    logger.warn("   |- Retrieved historical data is empty; skipping matching with newest data.")
+    
+    # need to force evaluation of cluster_id_col to ensure injection in tibble
+    force(cluster_id_col)
+    
+    out <- structure(
+      list(
+        matched_hist_dt = dplyr::tibble(
+          cluster_uuid = character(0), cluster_status = character(0), subject_name = character(0), manufacturer_id = character(0),
+          recorded_at = NA_POSIXct_, er_obs_id = character(0), er_source_id = character(0),
+          {{cluster_id_col}} := character(0), lon = numeric(0), lat = numeric(0)
+        ) |>
+          sf::st_as_sf(geometry = sf::st_sfc(sf::st_point(c(NA_real_, NA_real_)), crs = sf::st_crs(new_dt))),
+        match_tbl = tibble(master_cluster = NA, new_cluster = unique(na.omit(new_dt[[cluster_id_col]])), `Match Type` = "No Match"),
+        match_plot = NULL
+      ),
+      class = "cluster_matching_results"
+    )
+    return(out)
+  }
+  
+  
   # Input validation ----------------------
   
   # check object class
@@ -991,7 +1000,7 @@ match_sf_clusters <- function(hist_dt,
     cli::cli_abort("{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}.")
   }
   
-  if(!inherits(hist_dt, "sf")){
+  if(not_null(hist_dt) & !inherits(hist_dt, "sf")){
     cli::cli_abort("{.arg hist_dt} must be a {.cls sf} object, not {.cls {class(hist_dt)}}.")
   }
   
@@ -1002,16 +1011,7 @@ match_sf_clusters <- function(hist_dt,
       x = "Provided object is `NULL` or empty.")
     )
   }
-  
-  # If the old clusters are null or empty, return the new clusters 
-  if (is.null(hist_dt) || nrow(hist_dt) == 0) {
-    cli::cli_abort(c(
-      "{.arg hist_dt} must a populated dataset.",
-      x = "Provided object is `NULL` or empty.")
-    )
-    # return(new)
-  }
-  
+
   # Check that match_criteria is valid
   match_criteria <- rlang::arg_match(match_criteria)
 
@@ -1054,7 +1054,7 @@ match_sf_clusters <- function(hist_dt,
   # Valid. Proceed
   logger.info(sprintf(
     "  |- Matching %d clusters in newest data to %d clusters in historical data.",
-    length(unique(new_dt[[cluster_id_col]])), length(unique(hist_dt[["cluster_uuid"]]))
+    length(na.omit(unique(new_dt[[cluster_id_col]]))), length(na.omit(unique(hist_dt[["cluster_uuid"]])))
   ))
   
   logger.info(sprintf(
@@ -1436,10 +1436,17 @@ match_sf_clusters <- function(hist_dt,
     "  |- Matched %d clusters between old data to new data.", nrow(final_matches)
   ))
   
-  # Return list 
-  return(
-    list(matched_master_data = outdata, match_table = final_matches, match_plot = allplot)
+  
+    
+  structure(
+    list(matched_hist_dt = outdata, match_tbl = final_matches, match_plot = allplot), 
+    class = "cluster_matching_results"
   )
+  
+  # # Return list 
+  # return(
+  #   list(matched_master_data = outdata, match_table = final_matches, match_plot = allplot)
+  # )
   
 }
 
