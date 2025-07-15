@@ -19,7 +19,7 @@ It is particularly useful in scheduled or automated workflows, where recent outp
 
 This App provides a MoveApps–EarthRanger integration for the **permanent storage and updating** of movement data that has been processed and annotated with features of interest - such as behavioural states or spatial cluster memberships - by upstream Apps. It is designed for use in scheduled workflows, where newly processed data needs to be merged with historical records and reliably stored in EarthRanger (ER).
 
-The current version is specifically focused on **cluster-level updating** - ensuring that the status of detected spatial clusters (`"active"` or `"closed"`) is correctly recognised, and that each associated location event is appropriately updated. Future versions may extend support for broader data-merging tasks with fewer constraints around cluster handling.
+The current version is specifically focused on **cluster-level updating** - ensuring that the status of detected spatial clusters (`"ACTIVE"` or `"CLOSED"`) is correctly recognised, and that each associated location event is appropriately updated. Future versions may extend support for broader data-merging tasks with fewer constraints around cluster handling.
 
 The App performs three core tasks:
 
@@ -53,7 +53,7 @@ We expect there to be a large number of duplicate observations between both data
 
 This is performed by splitting the data into `POST` data, i.e. observations that do not yet exist on EarthRanger and need to be posted, and `PATCH`, data, i.e. observations that *already* exist on EarthRanger and only need some associated attributes to be updated.
 
-Any cluster whose final timestamp was over `active_days_thresh` days BEFORE the most recent observation timestamp is marked as *CLOSED*. This means that future runs of this MoveApp will no longer call observations associated with this cluster: it is assumed to be a concluded event, and data associated with it will no longer be replaced by updated attributes. This is implemented to prevent the APIs from calling excessive volumes of data on each iteration.
+Any cluster whose final timestamp was over `active_days_thresh` days BEFORE the most recent observation timestamp is marked as `"CLOSED"`. This means that future runs of this MoveApp will no longer call observations associated with this cluster: it is assumed to be a concluded event, and data associated with it will no longer be replaced by updated attributes. This is implemented to prevent the APIs from calling excessive volumes of data on each iteration.
 
 ### Application scope
 
@@ -87,7 +87,7 @@ None.
 
 **Lookback (days)** (`lookback`): Number of days to look back from the earliest timestamp in the input data to retrieve unclustered historical observations for updating. Note: Observations assigned to active clusters are always retrieved automatically.
 
-**Attributes to store in EarthRanger** (`store_cols`): Comma- or semicolon-separated list of attribute names to store along each observation's location and timestamp in EarthRanger. If `NULL`, all attributes are stored.
+**Attributes to store in EarthRanger** (`store_cols`): Comma- or semicolon-separated list of attribute names to store along each observation's location and timestamp in EarthRanger. If `NULL`, all attributes in input data are stored.
 
 **Merging Time Threshold (days)** (`days_thresh`): Maximum number of days within which clusters are considered for merging. Clusters that occur within this time frame can be merged together.
 
@@ -102,7 +102,7 @@ None.
 The App expands the input data by appending all historical location records associated with **currently active clusters**. Two additional columns also also introduced:
 
 -   `cluster_uuid` - the unique identifier of each cluster, as recorded in the ER master dataset.
--   `cluster_state`- the current status of the cluster, either `"active"` or `"closed"`.
+-   `cluster_state`- the current status of the cluster, either `"ACTIVE"` or `"CLOSED"`.
 
 ### Most common errors
 

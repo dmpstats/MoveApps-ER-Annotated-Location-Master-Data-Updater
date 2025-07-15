@@ -32,7 +32,7 @@ with historical records and reliably stored in EarthRanger (ER).
 
 The current version is specifically focused on **cluster-level
 updating** - ensuring that the status of detected spatial clusters
-(`"active"` or `"closed"`) is correctly recognised, and that each
+(`"ACTIVE"` or `"CLOSED"`) is correctly recognised, and that each
 associated location event is appropriately updated. Future versions may
 extend support for broader data-merging tasks with fewer constraints
 around cluster handling.
@@ -76,8 +76,8 @@ workflow.
 
 The merging process is spatiotemporal. First, a comparison of all
 available clusters identifies all combinations of clusters that are
-within: A) *dist_thresh* of one another’s centroids or geometric medians
-B) Occuring within *days_thresh* of one another’s timestamps
+within: A) `dist_thresh` of one another’s centroids or geometric medians
+B) Occuring within `days_thresh` of one another’s timestamps
 i.e. fulfilling both the spatial- and temporal- criteria.
 
 In the event of a two-to-one match (two clusters merging/splitting into
@@ -103,12 +103,12 @@ posted, and `PATCH`, data, i.e. observations that *already* exist on
 EarthRanger and only need some associated attributes to be updated.
 
 Any cluster whose final timestamp was over `active_days_thresh` days
-BEFORE the most recent observation timestamp is marked as *CLOSED*. This
-means that future runs of this MoveApp will no longer call observations
-associated with this cluster: it is assumed to be a concluded event, and
-data associated with it will no longer be replaced by updated
-attributes. This is implemented to prevent the APIs from calling
-excessive volumes of data on each iteration.
+BEFORE the most recent observation timestamp is marked as `"CLOSED"`.
+This means that future runs of this MoveApp will no longer call
+observations associated with this cluster: it is assumed to be a
+concluded event, and data associated with it will no longer be replaced
+by updated attributes. This is implemented to prevent the APIs from
+calling excessive volumes of data on each iteration.
 
 ### Application scope
 
@@ -157,7 +157,25 @@ clusters are always retrieved automatically.
 **Attributes to store in EarthRanger** (`store_cols`): Comma- or
 semicolon-separated list of attribute names to store along each
 observation’s location and timestamp in EarthRanger. If `NULL`, all
-attributes are stored.
+attributes in input data are stored.
+
+**Merging Time Threshold (days)** (`days_thresh`): Maximum number of
+days within which clusters are considered for merging. Clusters that
+occur within this time frame can be merged together.
+
+**Merging Distance Threshold (meters)** (`dist_thresh`): Maximum
+distance between cluster centroids or geometric medians for clusters to
+be considered for merging. Clusters within this distance can be merged
+together.
+
+**Spatial-Matching Criteria** (`match_criteria`): Whether clusters
+should be merged by a comparison of their centroids `centroid` or their
+geometric medians `gmedian`. The latter is more robust to outliers.
+
+**Closure Threshold (days)** (`active_days_thresh`): Number of days
+after the most recent observation timestamp after which a cluster is
+considered closed. Clusters whose final timestamp is older than this
+threshold will not be included in future updates.
 
 ### Changes in output data
 
@@ -167,8 +185,8 @@ columns also also introduced:
 
 - `cluster_uuid` - the unique identifier of each cluster, as recorded in
   the ER master dataset.
-- `cluster_state`- the current status of the cluster, either `"active"`
-  or `"closed"`.
+- `cluster_state`- the current status of the cluster, either `"ACTIVE"`
+  or `"CLOSED"`.
 
 ### Most common errors
 
