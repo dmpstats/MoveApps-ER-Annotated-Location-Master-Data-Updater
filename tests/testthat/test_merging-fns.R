@@ -25,6 +25,8 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 
 test_that("match_sf_clusters() fails with invalid inputs", {
   
+  testthat::local_edition(3)
+  
   # wrong hist_dt
   expect_snapshot(  
     match_sf_clusters(
@@ -146,12 +148,14 @@ test_that("match_sf_clusters() works as expected", {
   class(hist) <- class(hist) %>% setdiff("move2")
   
   # case 1: 2 matches (i.e 2 overlapping) + 2 new clusters
-  out <- match_sf_clusters(
-    hist_dt = hist, 
-    new_dt = slice(test_sets$nam_1, 30:100), 
-    cluster_id_col = "clust_id", 
-    timestamp_col = "timestamp", 
-    plot_results = TRUE)
+  suppressWarnings(
+    out <- match_sf_clusters(
+      hist_dt = hist, 
+      new_dt = slice(test_sets$nam_1, 30:100), 
+      cluster_id_col = "clust_id", 
+      timestamp_col = "timestamp", 
+      plot_results = TRUE)
+  )
   
   expect_snapshot(out$match_table)
   expect_snapshot(out$matched_master_data)
@@ -170,12 +174,14 @@ test_that("match_sf_clusters() works as expected", {
   
   
   # case 2: 3 non-matches, resulting from 2 non-overlapping old clusters + 1 new cluster
-  out <- match_sf_clusters(
-    hist_dt = hist, 
-    new_dt = slice(test_sets$nam_1, 120:160), 
-    cluster_id_col = "clust_id", 
-    timestamp_col = "timestamp", 
-    plot_results = TRUE)
+  suppressWarnings(
+    out <- match_sf_clusters(
+      hist_dt = hist, 
+      new_dt = slice(test_sets$nam_1, 120:160), 
+      cluster_id_col = "clust_id", 
+      timestamp_col = "timestamp", 
+      plot_results = TRUE)
+  )
   
   expect_snapshot(out$matched_master_data)
   expect_snapshot(out$match_table)
@@ -208,13 +214,14 @@ test_that("match_sf_clusters() works as expected", {
     move2::mt_as_move2(, time_column = "timestamp", track_id_column = "individual_local_identifier") |> 
     mt_set_track_data(new_trck)
     
-  
-  out <- match_sf_clusters(
-    hist_dt = hist, 
-    new_dt = new, 
-    cluster_id_col = "clust_id", 
-    timestamp_col = "timestamp", 
-    plot_results = TRUE)
+  suppressWarnings(
+    out <- match_sf_clusters(
+      hist_dt = hist, 
+      new_dt = new, 
+      cluster_id_col = "clust_id", 
+      timestamp_col = "timestamp", 
+      plot_results = TRUE)
+  )
   
   expect_snapshot(out$matched_master_data)
   expect_snapshot(out$match_table)
@@ -233,13 +240,16 @@ test_that("match_sf_clusters() works as expected", {
   
   
   # case 4: change distance thresh, leading to one additional non matched cluster
-  out <- match_sf_clusters(
-    hist_dt = hist, 
-    new_dt = slice(test_sets$nam_1, 30:100), 
-    cluster_id_col = "clust_id", 
-    timestamp_col = "timestamp", 
-    dist_thresh = units::set_units(1, "m"),
-    plot_results = TRUE)
+  
+  suppressWarnings(
+    out <- match_sf_clusters(
+      hist_dt = hist, 
+      new_dt = slice(test_sets$nam_1, 30:100), 
+      cluster_id_col = "clust_id", 
+      timestamp_col = "timestamp", 
+      dist_thresh = units::set_units(1, "m"),
+      plot_results = TRUE)
+  )
   
   expect_snapshot(out$matched_master_data)
   expect_snapshot(out$match_table)
@@ -275,7 +285,8 @@ test_that("merge_and_update() Case 1: 1 cluster updated & 1 cluster unchanged + 
     slice(1:50) |> 
     mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     mutate(
-      cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_uuid = sub("NAM.", "CLST_", clust_id),
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
@@ -348,6 +359,7 @@ test_that("merge_and_update() Case 2: 2 old clusters updated + 2 new clusters", 
     mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
@@ -412,6 +424,7 @@ test_that("merge_and_update() Case 3: 2 old clusters unchanged + 1 new clusters"
     mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
@@ -479,6 +492,7 @@ test_that("merge_and_update() Case 4: obs get dropped/recruited from/to cluster"
     mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
@@ -554,6 +568,7 @@ test_that("merge_and_update() Case 5: cluster splits into 2 clusters", {
     mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       manufacturer_id = tag_id,
       subject_name = individual_local_identifier,

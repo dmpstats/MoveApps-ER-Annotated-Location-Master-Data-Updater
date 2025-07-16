@@ -38,7 +38,7 @@ set_interactive_app_testing()
 #   store_cols = c("clust_id", "behav", "sunrise_timestamp", "sunset_timestamp")
 #   
 # )
-
+ 
 
 
 
@@ -59,5 +59,12 @@ set_interactive_app_testing()
 # ----    Automated Unit testing        ----
 # ---------------------------------------- #
 
+# Functions tasked with API requests
 testthat::test_file("tests/testthat/test_ER-Callers.R")
+
+# Functions responsible for merging historical and new datasets
+testthat::test_file("tests/testthat/test_merging-fns.R")
+
+# Main rFunction
+testthat::test_file("tests/testthat/test_RFunction.R")
 
