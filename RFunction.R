@@ -378,7 +378,8 @@ fetch_hist <- function(api_base_url,
                        unclust_min_date = NULL, 
                        max_date = NULL, 
                        include_details = TRUE,
-                       page_size = 5000#, 
+                       page_size = 5000,
+                       provider_key = "moveapps_ann_locs"
                        #cluster_status_filter = c("active", "all-status")
 ){
   
@@ -412,7 +413,7 @@ fetch_hist <- function(api_base_url,
   
   
   # Handle retrieved datasets -------------------------------------
-  # If some o the conditions are met, forces function to return NULL
+  # If some of the conditions are met, forces function to return NULL
   
   ## Case 1: both datasets are empty. Two possibilities in ER's Observations table:
   ##   - No records available
@@ -424,36 +425,35 @@ fetch_hist <- function(api_base_url,
   ## Case 2: No ACTIVE clusters, but non-excluded data present
   if(nrow(obs_cluster_actv) == 0){
     # "cluster_uuid" attribute not present (e.g. inaugural run)
-    if("cluster_uuid" %!in% names(obs_cluster_non_excluded)){
-      return(NULL)
-    }else{
-      # keep only un-clustered observations (i.e. with no cluster UUID annotated)
-      obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, is.na(cluster_uuid))
-    }
+    if("cluster_uuid" %!in% names(obs_cluster_non_excluded)) return(NULL)
     
-    # All observations are in CLOSED clusters
-    if(nrow(obs_cluster_non_excluded) == 0){
-      return(NULL)
-    }
+    # keep only un-clustered observations (i.e. with no cluster UUID annotated)
+    obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, is.na(cluster_uuid))
   }
-  
+    
+  # All observations are in CLOSED clusters
+  if(nrow(obs_cluster_non_excluded) == 0)  return(NULL)
+
   # stack-up the two datasets
   obs <- dplyr::bind_rows(obs_cluster_actv, obs_cluster_non_excluded)
   
   
-  # Retrieve required complementary data ----------------------------------
-  # Get manufacturer_id/tag_id and subject_name/individual_local_identifier 
-  # for each source
+  # Retrieve required complementary data ------------------------------------------
+  # Get manufacturer_id/tag_id, subject_name/individual_local_identifier 
+  # and provider key (see below) for each source.
   sources <- unique(obs$source)
   
-  sources_aux <- sources |> 
+  sources_info <- sources |> 
     purrr::map(function(s){
-      manufacturer_id <- get_source_details(s, api_base_url, token)[["manufacturer_id"]]
+      #browser()
       
-      subject_name <- get_source_subjects(s, api_base_url, token) |> 
-        purrr::map_chr( \(sbj) sbj[["name"]])
+      source_dets <- get_source_details(s, api_base_url, token) |> 
+        purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
       
-      if(length(subject_name) > 1){
+      subject_dets <- get_source_subjects(s, api_base_url, token)[[1]] |> 
+        purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
+      
+      if(length(subject_dets$name) > 1){
         cli::cli_abort(c(
           "Each `tag_id`/`manufacturer_id` must be uniquely associated with a single subject.",
           x = "Detected a one-to-many relationship between `manufacturer_id` and `subject_name`, which is not currently allowed."
@@ -461,8 +461,10 @@ fetch_hist <- function(api_base_url,
       }
       
       dplyr::tibble(
-        manufacturer_id = ifelse(length(manufacturer_id) == 0, NA, manufacturer_id), 
-        subject_name = ifelse(length(subject_name) == 0, NA, subject_name)
+        subject_id = subject_dets$id,
+        subject_name = subject_dets$name,
+        manufacturer_id = source_dets$manufacturer_id, 
+        provider = source_dets$provider
       )
       
     }) |> 
@@ -470,9 +472,18 @@ fetch_hist <- function(api_base_url,
     purrr::list_rbind(names_to = "source")
   
   
-  # Prepare and output ----------------------------------
-  dplyr::right_join(sources_aux, obs, by = "source") |> 
-    dplyr::select(!c(exclusion_flags)) |> 
+  # the GET query on non-active is oblivious to the obs source provider, so to
+  # avoid duplicates from subjects/tags included in more than one source
+  # provider (e.g. fed simultaneously from our MoveApps Workflow and a dedicated
+  # MoveBank feed), we need to keep obs linked to the specified `provider_key`.
+  # So, once we bind the provider key, we filter out obs tied to other source
+  # providers
+  obs <- dplyr::left_join(obs, sources_info, by = "source") |> 
+    filter(provider == provider_key)
+    
+  # Process for output --------------------------------------------------------
+  obs |> 
+    dplyr::select(!c(exclusion_flags, provider)) |> 
     dplyr::mutate(
       er_obs_id = id,
       er_source_id = source,
@@ -1952,7 +1963,7 @@ fill_track_gaps <- function(clustered_dt,
   # those members to "CLOSED" clusters. 
   # *In addition*, the GET query is oblivious to the obs source provider, so to
   # avoid duplicates from subjects included in more than one source provider
-  # (e.g. feeded simultaneously from our MoveApps Workflow and a dedicated
+  # (e.g. fed simultaneously from our MoveApps Workflow and a dedicated
   # MoveBank feed), we need to keep obs linked to the specified `provider_key`.
   # So, the next steps broadly involve:
   #  - filter non-clustered obs observations 

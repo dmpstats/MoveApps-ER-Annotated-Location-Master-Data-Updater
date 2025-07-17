@@ -9,16 +9,15 @@ if(rlang::is_interactive()){
   source("tests/app-testing-helpers.r")
   set_interactive_app_testing()
   app_key <- get_app_key()
+  er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 }
 
 
 test_sets <- test_path("data/vult_unit_test_data.rds") |> 
   httr2::secret_read_rds(key = I(app_key)) 
 
-er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
-
-
+# --------------------------------------------------------------------------
 test_that("output is a valid move2 object", {
   
   actual <- rFunction(data = test_sets$wcs)
@@ -90,13 +89,73 @@ test_that("dev testing", {
   
   rFunction(
     #data = test_sets$nam_2 |> slice(30:70),
-    #data = test_sets$nam_2 |> slice(180:200), 
-    data = test_sets$nam_1 |> slice(40:80), 
+    data = test_sets$nam_2 |> slice(100:200), 
+    #data = test_sets$nam_1 |> slice(40:80), 
     api_hostname = "standrews.dev.pamdas.org",
     api_token = er_tokens$standrews.dev$brunoc, 
     store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
   )
 })
+
+
+
+
+## get_hist()  -------------------------------------------------------------
+test_that("get_hist() works as expected", {
+
+  # setup   
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  dt <- test_sets$nam_1 |> 
+    mutate(
+      cluster_status = if_else(clust_id == "NAM.3", "CLOSED", "ACTIVE"),
+      cluster_uuid = sub("NAM.", "CLST_", clust_id),
+      track_id = move2::mt_track_id(test_sets$nam_1)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    slice(1:50)
+  
+  posting_dttm <- now()
+  
+  # post data
+  ra_post_obs(
+    data = dt,
+    tm_id_col = mt_time_column(dt),
+    additional_cols = c(store_cols, cluster_cols),
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc#,
+  )
+  
+  hist_dt <- fetch_hist(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    unclust_min_date = min(dt$timestamp) - lubridate::days(10), 
+    page_size = 500
+  )
+  
+  # expected to return all the pushed data
+  expect_equal(nrow(hist_dt), nrow(dt))
+  
+  expect_identical(
+    hist_dt |> 
+      arrange(subject_id, recorded_at) |> 
+      select(lat, lon, cluster_uuid,  behav),
+    
+    dt |> 
+      arrange(individual_local_identifier, timestamp) |> 
+      data.frame() |> 
+      select(lat, lon, cluster_uuid, behav)
+  )
+  
+  # delete test observations from ER
+  delete_obs(hist_dt$er_obs_id, er_tokens$standrews.dev$brunoc)
+  
+})
+
+
+
 
 
 
@@ -180,7 +239,6 @@ test_that("fill_track_gaps() works as expected", {
   delete_obs(pushed_obs$id, er_tokens$standrews.dev$brunoc)
   
 })
-
 
 
 
