@@ -32,6 +32,28 @@ set_interactive_app_testing <- function(){
 }
 
 
+# /////////////////////////////////////////////////////////////////////////////
+# Helper to delete observations in ER
+delete_obs <- function(obs_ids, token){
+  
+  res <- purrr::map_dbl(obs_ids, function(id){
+    
+    api_endpnt <- file.path("https://standrews.dev.pamdas.org/api/v1.0/observation", id)
+    
+    req <- httr2::request(api_endpnt) |> 
+      req_auth_bearer_token(token) |> 
+      req_method("DELETE") |> 
+      req_headers(
+        "Accept" = "application/json",
+        "Content-Type" = "application/json"
+      )
+    req |>  httr2::req_perform() |> httr2::resp_status()
+  }, 
+  .progress = TRUE)
+  
+  cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
+}
+
 
 ## /////////////////////////////////////////////////////////////////////////////
 # helper to run SDK testing with different settings
