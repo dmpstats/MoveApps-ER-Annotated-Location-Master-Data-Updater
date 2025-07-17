@@ -233,6 +233,7 @@ rFunction = function(data,
   ## Keep observations in new clusters and modified clusters.
   logger.info("  |- Dropping observations in unchanged clusters.")
   
+  ## Filter observations in new clusters and modified clusters.
   updated_clusters_uuid <- merged_dt |> 
     dplyr::filter(!is.na(cluster_uuid)) |> 
     dplyr::filter(!is.na(request_type)) |> 
@@ -2012,11 +2013,7 @@ fill_track_gaps <- function(clustered_dt,
 
 }
 
-# /////////////////////////////////////////////////////////////////////////////
-# Other short utility helpers
 
-#' check if vector is parseable into date-time (POSIXt)
-is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
 
 # ////////////////////////////////////////////////////////////////////////////////
 #' helper to coerce common columns between two datasets to have the same
@@ -2076,6 +2073,12 @@ get_subject_ids <- function(api_base_url, token){
   purrr::map(res_subj, ~ data.frame(er_subject_name = .x$name, er_subject_id = .x$id)) |>
     purrr::list_rbind()
 }
+
+# /////////////////////////////////////////////////////////////////////////////
+# Other short utility helpers
+
+#' check if vector is parseable into date-time (POSIXt)
+is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
 
 
 
