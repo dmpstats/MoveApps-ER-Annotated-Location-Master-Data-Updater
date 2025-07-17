@@ -1437,16 +1437,11 @@ match_sf_clusters <- function(hist_dt,
   ))
   
   
-    
+  # output  
   structure(
     list(matched_hist_dt = outdata, match_tbl = final_matches, match_plot = allplot), 
     class = "cluster_matching_results"
   )
-  
-  # # Return list 
-  # return(
-  #   list(matched_master_data = outdata, match_table = final_matches, match_plot = allplot)
-  # )
   
 }
 
@@ -1569,32 +1564,8 @@ merge_and_update <- function(matched_dt,
       {{timestamp_col}} := recorded_at
     )
   
-  
-  ## Introspect the class/type of mutual columns
-  mutual_cols <- intersect(names(new_dt), names(matched_hist_dt))
-  
-  mutual_cols_prof <- purrr::map(mutual_cols, function(col){
-    x <- new_dt[[col]]
-    data.frame(
-      col_name = col,
-      cls = class(x)[[1]], # top-level class
-      units = ifelse(inherits(x, "units"), units::deparse_unit(x), NA)
-    )
-  }) |> 
-    purrr::list_rbind()
-  
-  # Coerce classes of columns in historic data. Currently only dealing with 
-  # `<units>`, `<POSIXT`> and `<integer64>`
-  mutual_cols_prof |> 
-    purrr::pwalk(function(col_name, cls, units){
-      if (cls == "units"){
-        matched_hist_dt[[col_name]] <<- units::set_units(matched_hist_dt[[col_name]], units, mode = "standard")
-      } else if (cls == "POSIXct"){
-        matched_hist_dt[[col_name]] <<- lubridate::ymd_hms(matched_hist_dt[[col_name]], tz = "UTC")
-      } else if (cls == "integer64") {
-        matched_hist_dt[[col_name]] <<- bit64::as.integer64(matched_hist_dt[[col_name]])
-      }
-    })
+  # Coerce classes of columns in historic data to meet those in new data 
+  matched_hist_dt <- coerce_col_types(matched_hist_dt, new_dt)
   
   ## Add cluster provenance
   matched_hist_dt <- matched_hist_dt |>
@@ -1638,7 +1609,6 @@ merge_and_update <- function(matched_dt,
   logger.info(sprintf("  |- Found %d observations, of which %d have duplicates", nrow(alldata), sum(alldata$XTEMPCOUNT > 1)))
   
   # Merge data ----------------------------------------------------------
-  
   # Whenever COUNT > 1, we have a duplicate observation which consists of an
   # observation from ER and an observation from MoveApps. The ER observation
   # will have a observation_id, which we want to retain. However, we want to
@@ -1671,7 +1641,6 @@ merge_and_update <- function(matched_dt,
   
   
   # Classify Cluster Status -------------------------------------
-  
   # Now we want to rewrite the cluster_status column to determine whether a cluster is 
   # ACTIVE or CLOSED. This will be determined by the most recent timestamp in all clusters:
   # if it was within active_days_thresh, then the cluster is ACTIVE, otherwise it is CLOSED.
@@ -1701,7 +1670,6 @@ merge_and_update <- function(matched_dt,
   
   
   # Handle Cluster UUIDs  -------------------------------------------
-  
   ## New UUIDs issued based on match table, with data grouped by hist cluster
   ## IDs (here provided in col `master_cluster`, as a legacy of
   ## `match_sf_clusters()`)
@@ -1725,7 +1693,6 @@ merge_and_update <- function(matched_dt,
   
   
   # Classify obs cluster-merging status ----------------------------------------
-  
   ## Combine information on historic and new UUIDs to work out observation-level
   ## changes in cluster membership. 
   ## NOTE: cluster annotation in historical data is retained in `cluster_uuid_hist`
@@ -1818,9 +1785,7 @@ merge_and_update <- function(matched_dt,
   }
   
   
-  
   # Annotate patching and posting ----------------------------------------
-  
   # We now want to annotate data into PATCH and POST data for API processing. 
   # - All new oobservations will POSTable.
   # - PATCHable obs will be those that have changed their cluster membership status 
@@ -1852,7 +1817,6 @@ merge_and_update <- function(matched_dt,
     sum(is.na(merged_dt$request_type))
   ))
   
-  
   # Tidy-up and output ----------------------------------------
   merged_dt <- merged_dt |> 
     dplyr::select(-any_of(c(
@@ -1872,33 +1836,40 @@ merge_and_update <- function(matched_dt,
 #' check if vector is parseable into date-time (POSIXt)
 is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
 
+# ////////////////////////////////////////////////////////////////////////////////
+#' helper to coerce common columns between two datasets to have the same
+#' class/type, to allow for subsequent stacking up
+coerce_col_types <- function(data, ref_data){
+  
+  mutual_cols <- intersect(names(data), names(ref_data))
+  
+  mutual_cols_prof <- purrr::map(mutual_cols, function(col){
+    x <- ref_data[[col]]
+    data.frame(
+      col_name = col,
+      cls = class(x)[[1]], # top-level class
+      units = ifelse(inherits(x, "units"), units::deparse_unit(x), NA)
+    )
+  }) |> 
+    purrr::list_rbind()
+  
+  # Coerce classes of columns of target dataset. Currently only dealing with 
+  # `<units>`, `<POSIXT`> and `<integer64>`
+  mutual_cols_prof |> 
+    purrr::pwalk(function(col_name, cls, units){
+      if (cls == "units"){
+        data[[col_name]] <<- units::set_units(data[[col_name]], units, mode = "standard")
+      } else if (cls == "POSIXct"){
+        data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC")
+      } else if (cls == "integer64") {
+        data[[col_name]] <<- bit64::as.integer64(data[[col_name]])
+      }
+    })
+  
+  data
+}
 
 
-# ## Issue UUIDs to freshly formed clusters
-# cluster_uuids_map <- merged_dt |> 
-#   data.frame() |> 
-#   dplyr::filter(!is.na(XTEMPCLUSTERCOL)) |> 
-#   distinct(XTEMPCLUSTERCOL, cluster_uuid) |> 
-#   mutate(
-#     cluster_uuid = ifelse(
-#       all(is.na(cluster_uuid)), 
-#       paste(
-#         #ids::sentence(style = "camel"), 
-#         ids::adjective_animal(n_adjectives = 2, style = "camel"),
-#         format(Sys.time(), "%Y%m%d-%H%M%S"), 
-#         sep = "-"),
-#       #ids::uuid(use_time = TRUE), 
-#       cluster_uuid),
-#     .by = XTEMPCLUSTERCOL
-#   ) |> 
-#   distinct()
-# 
-# ## Update cluster UUIDs and their earliest points in merged data
-# merged_dt <- merged_dt |> 
-#   # drop "outdated" cluster UUID column
-#   dplyr::select(-cluster_uuid) |>
-#   # merge updated cluster UUID column
-#   left_join(cluster_uuids_map, by = "XTEMPCLUSTERCOL")
 
 
 
@@ -1910,3 +1881,4 @@ generate_uuid <- function(n = 1){
     format(Sys.time(), "%Y%m%d-%H%M%S"), 
     sep = "-")
 }
+
