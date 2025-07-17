@@ -100,6 +100,91 @@ test_that("dev testing", {
 
 
 
+## fetch_unclustered()  -------------------------------------------------------------
+test_that("fill_track_gaps() works as expected", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", 
+                      "individual_id", "track_id", "study_id")
+  
+  # set new data
+  new <- slice(test_sets$nam_1, 50:120)
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist = NULL, new, "clust_id", "timestamp")
+  
+  # run merging
+  merged_eg <- merge_and_update(
+    matched_dt = matched_hist,
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+  
+  post_dttm <- now()
+  
+  merged_eg |> 
+    dplyr::filter(request_type == "POST") |> 
+    ra_post_obs(
+      tm_id_col = "timestamp", 
+      additional_cols =  c(store_cols, cluster_cols, mv2_track_cols), 
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+      token = er_tokens$standrews.dev$brunoc, 
+      provider_key = "moveapps_ann_locs", 
+      batch_size = 200
+    )
+  
+  merged_eg |> 
+    dplyr::filter(request_type == "PATCH") |> 
+    patch_obs(
+      additional_cols = c(store_cols, cluster_cols, mv2_track_cols),
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+      token = er_tokens$standrews.dev$brunoc
+    )
+  
+  updated_clusters_uuid <- merged_eg |> 
+    filter(!is.na(cluster_uuid), !is.na(request_type)) |> 
+    distinct(cluster_uuid, request_type) |> 
+    pull(cluster_uuid)
+  
+  clustered_eg <- merged_eg |> 
+    filter(cluster_uuid %in% updated_clusters_uuid)
+  
+  out <- fill_track_gaps(
+    clustered_dt = clustered_eg,
+    tm_id_col = "timestamp",
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  expect_equal(nrow(out), nrow(new))
+  
+  expect_equal(
+    sum(is.na(out$cluster_uuid)),
+    sum(is.na(new$clust_id))
+  )
+  
+  # delete test observations from ER
+  ## first need to retrieve them to get the obs ids...
+  pushed_obs <- get_obs(
+    created_after = post_dttm, 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+    token = er_tokens$standrews.dev$brunoc
+  )
+  # ... which can now be used to delete mentioned obs
+  delete_obs(pushed_obs$id, er_tokens$standrews.dev$brunoc)
+  
+})
+
+
+
+
+
 
 
 
