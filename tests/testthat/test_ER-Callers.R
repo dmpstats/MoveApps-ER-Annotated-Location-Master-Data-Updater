@@ -26,7 +26,7 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 # Helper to delete observations in ER
 delete_obs <- function(obs_ids, token){
   
-  res <- sapply(obs_ids, function(id){
+  res <- purrr::map_dbl(obs_ids, function(id){
     
     api_endpnt <- file.path("https://standrews.dev.pamdas.org/api/v1.0/observation", id)
     
@@ -38,7 +38,9 @@ delete_obs <- function(obs_ids, token){
         "Content-Type" = "application/json"
       )
     req |>  httr2::req_perform() |> httr2::resp_status()
-  })
+  }, 
+  .progress = TRUE)
+  
   cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
 }
 
@@ -237,6 +239,69 @@ test_that("Data posted and retrieved as expected: handling of obs in ACTIVE clus
 
 
 
+test_that("Data posted and retrieved as expected: fetch obs by subject ID", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  dt <- test_sets$nam_1 |> 
+    mutate(
+      cluster_status = if_else(clust_id == "NAM.3", "CLOSED", "ACTIVE"),
+      cluster_uuid = sub("NAM.", "CLST_", clust_id),
+      track_id = move2::mt_track_id(test_sets$nam_1)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    slice(1:100)
+  
+  posting_dttm <- now()
+  
+  expect_no_error(
+    ra_post_obs(
+      data = dt,
+      tm_id_col = mt_time_column(dt),
+      additional_cols = c(store_cols, cluster_cols),
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc#,
+    )
+  )
+  
+  subjs <- get_subject_ids("https://standrews.dev.pamdas.org/api/v1.0/", er_tokens$standrews.dev$brunoc)
+  
+  # get obs of subject named "GA_6581"
+  dt_GA_6581 <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    include_details = TRUE, 
+    subject_id = subjs[subjs$er_subject_name == "GA_6581", "er_subject_id"]
+  )
+  
+  expect_equal(
+    nrow(dt_GA_6581),
+    nrow(filter(dt, individual_local_identifier ==  "GA_6581"))
+  )
+  
+  expect_identical(
+    dt_GA_6581 |> select(lat, lon, cluster_uuid),
+    dt |> data.frame() |> filter(individual_local_identifier ==  "GA_6581") |> select(lat, lon, cluster_uuid )
+  )
+  
+  # Delete test observations from ER
+  # get All obs, for cleaning
+  ER_obs <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    created_after = posting_dttm
+  )
+  # delete
+  delete_obs(ER_obs$id, token = er_tokens$standrews.dev$brunoc)
+  
+})
+
+
+
+
+
 # patch_obs()  -------------------------------------------------------------
 
 test_that("Data patched as expected", {
@@ -330,6 +395,9 @@ test_that("Data patched as expected", {
 
 
 
+
+
+
 # Development Testing  -------------------------------------------------------------
 test_that("get_obs() dev testing", {
   
@@ -396,14 +464,19 @@ test_that("ra_post_obs() dev testing", {
 
 
 
-test_that("er_check_status() dev testing", {
+test_that("get_source_details() dev testing", {
   
   skip()
   
-  er_check_status(
+  test <- get_source_details(
+    src = "838981044",
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-    token = "ttetet" #er_tokens$standrews.dev$brunoc
+    token =er_tokens$standrews.dev$brunoc
   )
+  
+  ?reframe
+  
+  tibble::as_tibble(test, )
   
 })
 
