@@ -275,3 +275,36 @@ send_new_obs <- function(post_dt, tm_id_col, store_cols, api_base_url, token){
   patch_obs(obs_excl_flags, api_base_url = api_base_url, token = token)
   
 }
+
+
+
+
+
+
+get_subject_ids <- function(subject_names, api_base_url, token){
+
+  # get ER's subject_id based on subject_name
+  subjects_api_endpnt <- file.path(api_base_url, "subjects")
+
+  purrr::map(subject_names, function(name){
+    #browser()
+    req_subj <- httr2::request(subjects_api_endpnt) |>
+      httr2::req_url_query(name = name) |>
+      httr2::req_auth_bearer_token(token) |>
+      httr2::req_headers("accept" = "application/json")
+
+    #req_src |> req_dry_run()
+
+    res <- req_subj |>
+      httr2::req_perform() |>
+      httr2::resp_body_json() |>
+      purrr::pluck("data")
+
+    if(length(res) > 0){
+      data.frame(er_subject_name = name, er_subject_id = res[[1]]$id)
+    } else NULL
+
+  }) |>
+    purrr::list_rbind()
+
+}
