@@ -180,6 +180,9 @@ rFunction = function(data,
     dist_thresh = units::set_units(dist_thresh, "m"),
     match_criteria = match_criteria
   )
+  
+  # house-keeping
+  rm(hist_dt)
 
   
   ## Conciliate & merge datasets -----------
@@ -193,7 +196,9 @@ rFunction = function(data,
   ) |> 
     # dropping row created above to deal with NULL `hist_dt`, identified as empty lat/lon
     tidyr::drop_na(lat, lon) 
-    
+  
+  # house-keeping
+  rm(matched_dt)
   
   # Send new observations to ER  ----------------------------------------------
   logger.info("Uploading newly observed locations to ER.")
@@ -223,21 +228,46 @@ rFunction = function(data,
   
   
   # Prepare output data ------------------------------------------------------
-  # 1. Spatial terms: project into same CRS as input data & set same name for geom column
-  # 2. Coerce as <move2>, with pre-specified and traced track columns
-  logger.info("Preparing data for output")
+  logger.info("Preparing data for output.")
   
-  output <- merged_dt |>
-    sf::st_transform(crs = sf::st_crs(data)) |> 
+  ## Keep observations in new clusters and modified clusters.
+  logger.info("  |- Dropping observations in unchanged clusters.")
+  
+  updated_clusters_uuid <- merged_dt |> 
+    dplyr::filter(!is.na(cluster_uuid)) |> 
+    dplyr::filter(!is.na(request_type)) |> 
+    dplyr::distinct(cluster_uuid, request_type) |> 
+    dplyr::pull(cluster_uuid)
+  
+  clustered_dt <- merged_dt |> 
+    dplyr::filter(cluster_uuid %in% updated_clusters_uuid)
+  
+  # house-keeping
+  rm(merged_dt)
+  
+  ## re-fetch unclustered obs to fill up gaps in track-level data
+  logger.info("  |- Filling gaps in tracks within the merged dataset.")
+  
+  out <- fill_track_gaps(
+    clustered_dt = clustered_dt,
+    tm_id_col = "timestamp",
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  # house-keeping
+  rm(clustered_dt)
+  
+  logger.info("  |- Coerce merged data as <move2>.")
+  out <- out |> 
     # safeguard against missing values in track_id
     tidyr::replace_na(list(track_id =  "UNKNOWN")) |> 
     # safeguard against missing values in track-level attributes within each
     # track. Should be removable once the ER-MA data exchanges are streamlined
     dplyr::mutate(
-     dplyr::across(any_of(mv2_track_cols), .fns = ~dplyr::first(.x, na_rm = TRUE)),
-     .by = track_id
+      dplyr::across(any_of(mv2_track_cols), .fns = ~dplyr::first(.x, na_rm = TRUE)),
+      .by = track_id
     ) |>
-    #dplyr::filter(cluster_status %in% c("ACTIVE", "CLOSE")) |> 
     dplyr::select(dplyr::any_of(c(tm_id_col, store_cols, cluster_cols, mv2_track_cols))) |> 
     move2::mt_as_move2(
       time_column = tm_id_col, 
@@ -245,11 +275,13 @@ rFunction = function(data,
       track_attributes = any_of(mv2_track_cols),
       sf_column_name = sf_col
     )
+  
  
   logger.info(glue::glue("{symbol$star} Finished update to master location data in ER."))
-  output
+  out
   
 }
+
 
 
 
@@ -383,7 +415,7 @@ fetch_hist <- function(api_base_url,
   
   ## Case 1: both datasets are empty. Two possibilities in ER's Observations table:
   ##   - No records available
-  ##   - All observations are tagged with exclusion_flags AND there is none of the obs are in ACTIVE clusters
+  ##   - All observations are tagged with exclusion_flags AND none of the obs are in ACTIVE clusters
   if(nrow(obs_cluster_actv) == 0 && nrow(obs_cluster_non_excluded) == 0){
     return(NULL)
   }
@@ -603,6 +635,7 @@ get_obs <- function(api_base_url,
                     max_date = NULL, 
                     created_after = NULL, 
                     filter = NULL, 
+                    subject_id = NULL,
                     include_details = TRUE, 
                     page_size = 1000){
   
@@ -665,6 +698,7 @@ get_obs <- function(api_base_url,
         since = min_date,
         until = max_date,
         created_after = created_after,
+        subject_id = subject_id,
         page_size = page_size,
         include_details = tolower(as.character(include_details)) # Convert logical to string
       ) |>
@@ -822,7 +856,7 @@ patch_obs <- function(data,
   # Input Validation -----------------------------------------------------------
   if(nrow(data) == 0){
     logger.warn("  |- No observations to PATCH - skipping PATCHing step.")
-    return(NULL)
+    return(invisible())
   }
   
   # if ("er_obs_id" %!in% names(data)) {
@@ -1784,7 +1818,6 @@ merge_and_update <- function(matched_dt,
       ) 
   }
   
-  
   # Annotate patching and posting ----------------------------------------
   # We now want to annotate data into PATCH and POST data for API processing. 
   # - All new oobservations will POSTable.
@@ -1829,6 +1862,155 @@ merge_and_update <- function(matched_dt,
 }
  
 
+# ////////////////////////////////////////////////////////////////////////////////
+#' Fetch and stack non-clustered observations from subjects involved in the
+#' clusters, within each cluster's time window.
+#' 
+#' This is to ensure track/movement data is provided in ints entirity to downstream
+#' Apps (e.g. the Metrics Apps)
+#'  
+#' **IMPORTANT**: This function MUST be run **AFTER** the latest merged data is pushed to
+#' ER, so that Observations data is up-to-date on ER.
+#' 
+#' NB: this task could also be performed based on tag IDs, instead of subject
+#' name. Could that be potentially safer? Something to keep in mind...
+#' @param clustered_dt a `<sf>` object containing *only* clustered observations 
+#' 
+fill_track_gaps <- function(clustered_dt,
+                            tm_id_col,
+                            api_base_url, 
+                            token,
+                            provider_key = "moveapps_ann_locs"){
+  
+  # Input validation -------------------
+  req_cols <- c("request_type", "cluster_uuid", "track_id", "individual_local_identifier")
+  miss_cols <- req_cols[req_cols %!in% names(clustered_dt)]
+  if (length(miss_cols) > 0) {
+    cli::cli_abort("{.arg clustered_dt} is missing the following required columns: {.val {miss_cols}}.")
+  }
+  
+  if(sum(is.na(clustered_dt$cluster_uuid)) > 0){
+    cli::cli_abort(c(
+      "{.arg clustered_dt} must only contain clustered data."),
+      x = "Found `NAs` in column {.val cluster_uuid}"
+    )
+  }
+  
+  # Fetch obs for subjects visiting clusters -------------
+  logger.info("  |- Filling gaps in tracks within the merged dataset.")
+  
+  ## Prepare query parameters for GET obs request. For each subject involved in
+  ## any cluster, get the min and max dates across all visited clusters
+  query_subjects <- clustered_dt |> 
+    group_by(cluster_uuid) |> 
+    # get start and end dates of each cluster + visited subjects
+    reframe(
+      cluster_start = min(.data[[tm_id_col]]),
+      cluster_end = max(.data[[tm_id_col]]),
+      er_subject_name = unique(individual_local_identifier)
+    ) |> 
+    # for each subject, derive time window spanning over visited clusters +- 1
+    # day to ensure leading and trailing track points are included
+    group_by(er_subject_name) |> 
+    reframe(
+      query_from = min(cluster_start) - lubridate::days(1),
+      query_to = max(cluster_end) + lubridate::days(1)
+    )
+  
+  ## Get and bind subject IDs, required for querying obs via GET
+  subject_ids <- get_subject_ids(api_base_url, token)
+  #subject_ids <- get_subject_ids(query_subjects$individual_local_identifier, api_base_url, token)
+  
+  query_subjects <- dplyr::left_join(query_subjects, subject_ids, by = "er_subject_name")
+  
+  ## Perform Obs GET request
+  obs_nonexcl <- purrr::pmap(
+    query_subjects,
+    function(query_from, query_to, er_subject_id, er_subject_name){
+      #browser()
+      get_obs(
+        api_base_url = api_base_url, 
+        token = token, 
+        min_date = query_from, 
+        max_date = query_to, 
+        filter = 0, # non-clustered and CLOSED observations
+        subject_id = er_subject_id
+      ) |> 
+        dplyr::mutate(
+          er_subject_name = er_subject_name, 
+          er_subject_id = er_subject_id
+        )
+    }, 
+    .progress = TRUE
+  ) |> 
+    purrr::list_rbind()
+  
+  # Handle retrieved data  ----------------------------------------------------
+  # Retrieved data will have observations not tagged with exclusion flag used
+  # for marking membership to "ACTIVE" clusters, so either non-clustered and
+  # those members to "CLOSED" clusters. 
+  # *In addition*, the GET query is oblivious to the obs source provider, so to
+  # avoid duplicates from subjects included in more than one source provider
+  # (e.g. feeded simultaneously from our MoveApps Workflow and a dedicated
+  # MoveBank feed), we need to keep obs linked to the specified `provider_key`.
+  # So, the next steps broadly involve:
+  #  - filter non-clustered obs observations 
+  #  - get and bind source details for obs in retrieved dataset
+  #  - drop all obs not submitted via the `provider_key`
+  #  - prepare data to stack up with clustered obs data
+  if(nrow(obs_nonexcl) > 0 && "cluster_uuid" %in% names(obs_nonexcl)){
+    
+    ## Keep only un-clustered observations (i.e. with no cluster UUID annotated)
+    obs_nonclust <- dplyr::filter(obs_nonexcl, is.na(cluster_uuid))
+    
+    if(nrow(obs_nonclust) > 0){
+      ## Source details associated with each observation entry
+      source_dets <- map(unique(obs_nonclust$source), function(s){
+        get_source_details(s, api_base_url, token) |> 
+          purrr::compact() |> 
+          dplyr::as_tibble()
+      }) |> 
+        purrr::list_rbind() |> 
+        select(id, manufacturer_id, provider) |> 
+        rename(source = id)
+      
+      ## Bind source details and keep observations for intended source provider
+      obs_nonclust <- left_join(obs_nonclust, source_dets, by = "source") |> 
+        filter(provider == provider_key)
+      
+      ## Prepare for stacking
+      obs_nonclust <- obs_nonclust |> 
+        dplyr::rename(
+          er_source_id = source, 
+          er_obs_id = id,
+          tag_id = manufacturer_id
+        ) |> 
+        dplyr::mutate(
+          {{tm_id_col}} := lubridate::as_datetime(recorded_at, tz = "UTC"), 
+        ) |> 
+        # drop non-relevant  columns
+        dplyr::select(-c(exclusion_flags, created_at, recorded_at)) |> 
+        # cast as sf and reproject to same CRS as clustered data
+        sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |> 
+        sf::st_transform(sf::st_crs(clustered_dt))
+      
+      # homogenise column class/types
+      obs_nonclust <- coerce_col_types(obs_nonclust, clustered_dt)
+    }
+  }
+   
+  # Stack up and output  ----------------------------------
+  
+  if(nrow(obs_nonclust) > 0){
+    # sort and drop duplicates, currently keeping those in clustered data
+    dplyr::bind_rows(clustered_dt, obs_nonclust) |> 
+      dplyr::arrange(individual_local_identifier, tag_id, .data[[tm_id_col]]) |> 
+      dplyr::distinct(individual_local_identifier, tag_id, .data[[tm_id_col]], .keep_all = TRUE)
+  } else{
+    clustered_dt
+  }
+
+}
 
 # /////////////////////////////////////////////////////////////////////////////
 # Other short utility helpers
@@ -1871,6 +2053,29 @@ coerce_col_types <- function(data, ref_data){
 
 
 
+# ////////////////////////////////////////////////////////////////////////////////
+#' helper to fetch subject_id and subject_name of all the subjects present in
+#' ER's Observations table
+#' NB: Unclear whether there is a potential issue if the response starts
+#' returning paginated results due to large number of subjects in ER. The
+#' alternative is to perform iterative request over specific subjects (see
+#' namesake function in "dev/deprecated_code")
+get_subject_ids <- function(api_base_url, token){
+
+  subjects_api_endpnt <- file.path(api_base_url, "subjects")
+
+  req_subj <- httr2::request(subjects_api_endpnt) |>
+    httr2::req_auth_bearer_token(token) |>
+    httr2::req_headers("accept" = "application/json")
+
+  res_subj <- req_subj |>
+    httr2::req_perform() |>
+    httr2::resp_body_json() |>
+    purrr::pluck("data")
+
+  purrr::map(res_subj, ~ data.frame(er_subject_name = .x$name, er_subject_id = .x$id)) |>
+    purrr::list_rbind()
+}
 
 
 
