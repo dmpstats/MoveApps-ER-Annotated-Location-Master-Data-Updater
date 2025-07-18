@@ -247,8 +247,6 @@ rFunction = function(data,
   rm(merged_dt)
   
   ## re-fetch unclustered obs to fill up gaps in track-level data
-  logger.info("  |- Filling gaps in tracks within the merged dataset.")
-  
   out <- fill_track_gaps(
     clustered_dt = clustered_dt,
     tm_id_col = "timestamp",
@@ -269,7 +267,8 @@ rFunction = function(data,
       dplyr::across(any_of(mv2_track_cols), .fns = ~dplyr::first(.x, na_rm = TRUE)),
       .by = track_id
     ) |>
-    dplyr::select(dplyr::any_of(c(tm_id_col, store_cols, cluster_cols, mv2_track_cols))) |> 
+    dplyr::select(dplyr::any_of(c(tm_id_col, store_cols, cluster_cols, mv2_track_cols))) |>
+    dplyr::relocate(track_id) |> 
     move2::mt_as_move2(
       time_column = tm_id_col, 
       track_id_column = "track_id",
