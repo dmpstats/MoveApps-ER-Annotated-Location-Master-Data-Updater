@@ -1,7 +1,7 @@
 library(rlang)
 library(httr2)
 library(lubridate)
-#library(sf)
+library(move2)
 #library(here)
 
 if(rlang::is_interactive()){
@@ -17,16 +17,53 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
   httr2::secret_read_rds(key = I(app_key)) 
 
 
-# --------------------------------------------------------------------------
+# rFunction() --------------------------------------------------------------------------
 test_that("output is a valid move2 object", {
   
-  actual <- rFunction(data = test_sets$wcs)
-  # passes {move2} check
-  expect_true(move2::mt_is_move2(actual))
-  # check if 1st class is "move2"
-  expect_true(class(actual)[1] == "move2")
+  posting_dttm <- now()
   
+  input_dt <- test_sets$nam_1 |> slice(1:10)
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  
+  output_dt <- rFunction(
+    data = input_dt, 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(store_cols, collapse = ",")
+  )
+  
+  # passes {move2} check
+  expect_true(move2::mt_is_move2(ouput_dt))
+  # check if 1st class is "move2"
+  expect_true(class(ouput_dt)[1] == "move2")
+  
+  # input and output have the same nr of rows
+  expect_equal(nrow(input_dt), nrow(output_dt))
+  
+  # specified store_cols are in output data
+  expect_in(store_cols, names(output_dt))
+  
+  # attributes should be identical
+  expect_identical(
+    output_dt |> data.frame() |> select(timestamp, behav, geometry),
+    input_dt |> data.frame() |> select(timestamp, behav, geometry)
+  )
+  
+  # track ID column name has changed to `"track_id"`, but content remains the same
+  expect_equal(output_dt$track_id, mt_track_id(input_dt))
+  
+  
+  # delete test observations from ER
+  ## first need to retrieve them to get the obs ids...
+  pushed_test_obs <- get_obs(
+    created_after = posting_dttm, 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+    token = er_tokens$standrews.dev$brunoc
+  )
+  # ... which can now be used to delete mentioned obs
+  delete_obs(pushed_test_obs$id, er_tokens$standrews.dev$brunoc)
 })
+
 
 
 
