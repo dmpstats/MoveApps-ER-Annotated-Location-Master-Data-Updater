@@ -2007,7 +2007,9 @@ fill_track_gaps <- function(clustered_dt,
       
       # homogenise column class/types
       obs_nonclust <- coerce_col_types(obs_nonclust, clustered_dt)
-    }
+    } 
+  } else{
+    obs_nonclust <- data.frame()
   }
    
   # Stack up and output  ----------------------------------
@@ -2017,7 +2019,7 @@ fill_track_gaps <- function(clustered_dt,
     dplyr::bind_rows(clustered_dt, obs_nonclust) |> 
       dplyr::arrange(individual_local_identifier, tag_id, .data[[tm_id_col]]) |> 
       dplyr::distinct(individual_local_identifier, tag_id, .data[[tm_id_col]], .keep_all = TRUE)
-  } else{
+  } else {
     clustered_dt
   }
 
