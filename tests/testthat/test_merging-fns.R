@@ -740,3 +740,59 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
 
 
 
+
+test_that("merge_and_update() changes in store cols are detected an patched", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  
+  # prepare
+  hist <- test_sets$nam_1 |> 
+    slice(1:30) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mutate(
+      cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
+      recorded_at = timestamp,
+      manufacturer_id = tag_id,
+      subject_name = individual_local_identifier,
+      er_obs_id = ids::uuid(n()),
+      .keep = "unused"
+    ) |> 
+    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+  
+  # convert hist to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  # set new data
+  new <- slice(test_sets$nam_1, 1:30) |> 
+    mutate(
+      behav = ifelse(row_number() %in% c(1, 5, 10), "SNORING", behav),
+      stationary = ifelse(row_number() %in% c(2, 8, 9), 0, stationary)
+      )
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")
+  
+  # run merging
+  out <- merge_and_update(
+    matched_dt = matched_hist,
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+  
+  # 3 PATCHable obs 
+  # -the 3 changes in 'behav' 
+  # - 'stationary' not on store_cols, so doens't trigger the PATCH flag
+  expect_equal(sum(out$request_type == "PATCH", na.rm = TRUE), 3)
+  expect_in(filter(out, request_type == "PATCH") |> pull(behav), "SNORING")
+  
+  # No POSTable obs
+  expect_equal(sum(out$request_type == "POST", na.rm = TRUE), 0)
+  
+  # No changes in cluster membership
+  expect_equal( out$cluster_uuid, hist$cluster_uuid)
+})
+
+
