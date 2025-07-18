@@ -25,15 +25,15 @@ require(keyring)
 
 options(dplyr.width = Inf)
 
-source("../../Workflows_simulator/fcts_apps_wrappers.R")
-source("../../Workflows_simulator/helpers.r")
-source("../../Workflows_simulator/fcts_study_level_workflows.R")
+source("../../MoveApps_workflow_simulator/fcts_apps_wrappers.R")
+source("../../MoveApps_workflow_simulator/helpers.r")
+source("../../MoveApps_workflow_simulator/fcts_study_level_workflows.R")
 source("tests/app-testing-helpers.r")
 
 proj_key <- get_proj_key()
 app_key <- get_app_key()
 
-mvbk_creds <- httr2::secret_read_rds("../../Workflows_simulator/mvbk_creds.rds", key = I(proj_key))
+mvbk_creds <- httr2::secret_read_rds("../../MoveApps_workflow_simulator/mvbk_creds.rds", key = I(proj_key))
 
 apps_paths <- list(
   mvbkloc = "../Movebank-Loc-move2/",
@@ -60,14 +60,9 @@ pak::pkg_install(apps_deps)
 
 
 
-
-
 # ----------------------------------------------- #
 # ----    Run study-level WF + clustering App  -----
 # ----------------------------------------------- #
-
-
-
 
 ## Namibia SOP Study ---------------------------------------------------------
 
@@ -81,9 +76,7 @@ nam_1 <- study_level_wf(
   mvbk_pwd = mvbk_creds$scavengersonpatrol$pwd,
   study_name = "AVulture Namibia SOP", 
   animal_ids = c("GA_6581", "GA_5404", "TO_6485"), 
-  tm_start = tm_end - days(10),
-  tm_end = tm_end, 
-  loc_tm_thin_mins = 2
+  lastXdays = 10
 ) |> 
   cluster_app(
     clustercode = "NAM",
@@ -109,6 +102,40 @@ nam_2 <- study_level_wf(
     clustercode = "NAM",
     path_to_app = apps_paths$clust
   ) 
+
+
+
+nam <- movebank_loc_app(
+  username = mvbk_creds$scavengersonpatrol$usr, 
+  password = mvbk_creds$scavengersonpatrol$pwd,
+  sensor_name = "gps", 
+  study_name = "AVulture Namibia SOP", 
+  animals = c("GA_5404", "TO_6485", "GA_6581"),
+  lastXdays = 2,
+  path_to_app = apps_paths$mvbkloc
+) 
+
+
+
+
+
+nam_3mths <- study_level_wf(
+  apps_paths = apps_paths,
+  mvbk_usr = mvbk_creds$scavengersonpatrol$usr, 
+  mvbk_pwd = mvbk_creds$scavengersonpatrol$pwd,
+  study_name = "AVulture Namibia SOP", 
+  animal_ids = c("GA_6594", "GA_6581", "GA_5404", "TO_6220", "TO_6485", "TO_6485", "GA_5864"), 
+  lastXdays = 90,
+  loc_tm_thin_mins = 2
+) |> 
+  cluster_app(
+    clustercode = "NAM",
+    path_to_app = apps_paths$clust
+  ) 
+
+
+
+
 
 
 
@@ -195,6 +222,9 @@ test_sets <- list(
 )
 
 httr2::secret_write_rds(test_sets, path = "data/raw/vult_test_data.rds", key = I(app_key))
+
+
+httr2::secret_write_rds(nam_3mths, path = "data/raw/vult_test_data_nam3mths.rds", key = I(app_key))
 
 
 # subset for unit testing
