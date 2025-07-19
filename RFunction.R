@@ -211,7 +211,7 @@ rFunction = function(data,
       api_base_url = api_base_url, 
       token = api_token, 
       provider_key = "moveapps_ann_locs", 
-      batch_size = 200
+      batch_size = 1000
     )
   
   
@@ -524,7 +524,7 @@ ra_post_obs <- function(data,
                         api_base_url, 
                         token, 
                         provider_key = "moveapps_ann_locs",
-                        batch_size = 200){
+                        batch_size = 1000){
 
   if(nrow(data) == 0){
     logger.warn("  |- No observations to POST - skipping POSTing step.")
@@ -606,7 +606,7 @@ ra_post_obs <- function(data,
         resp_status()
 
     }, 
-    .progress = list(format = "Uploading batch #{pb_current}/{pb_total} [{pb_rate}]")# | {cli::pb_eta_str}")
+    .progress = list(format = "Uploading batch nr. {pb_current}/{pb_total} [{pb_rate}]")# | {cli::pb_eta_str}")
     )
   
   # Log Results ------------------------------------------------------
@@ -893,6 +893,12 @@ patch_obs <- function(data,
       #drop units
       dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
     )
+  
+  # MUST remove cols "tag_id" & "individual_local_identifier" from
+  # additional_cols to avoid those attributes being disPATCHed to ER, which
+  # would lead to duplication issues. Remember, they should be treated as alias
+  # to, respectfully, "manufacturer_id" and "subject_name" in ER - i.e. avoid duplication
+  additional_cols <- additional_cols[additional_cols %!in% c("tag_id", "individual_local_identifier")]
   
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
@@ -1604,10 +1610,17 @@ merge_and_update <- function(matched_dt,
   ## Rename ER-based key "Observation" columns in historic dataset 
   matched_hist_dt <- matched_hist_dt |> 
     dplyr::rename(
-      individual_local_identifier = subject_name, 
+      individual_local_identifier = subject_name,
       tag_id = manufacturer_id,
       {{timestamp_col}} := recorded_at
     )
+  
+    # dplyr::mutate(
+    #   individual_local_identifier = subject_name, 
+    #   tag_id = manufacturer_id,
+    #   {{timestamp_col}} := recorded_at, 
+    #   .keep = "unused"
+    # )
   
   # Coerce classes of columns in historic data to meet those in new data 
   matched_hist_dt <- coerce_col_types(matched_hist_dt, new_dt)
