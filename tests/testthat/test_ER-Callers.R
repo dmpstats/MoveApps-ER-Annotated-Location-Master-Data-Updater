@@ -22,27 +22,27 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 
 
 #active_flag <- bit64::as.integer64(1311673391471656960)
-
-# Helper to delete observations in ER
-delete_obs <- function(obs_ids, token){
-  
-  res <- purrr::map_dbl(obs_ids, function(id){
-    
-    api_endpnt <- file.path("https://standrews.dev.pamdas.org/api/v1.0/observation", id)
-    
-    req <- httr2::request(api_endpnt) |> 
-      req_auth_bearer_token(token) |> 
-      req_method("DELETE") |> 
-      req_headers(
-        "Accept" = "application/json",
-        "Content-Type" = "application/json"
-      )
-    req |>  httr2::req_perform() |> httr2::resp_status()
-  }, 
-  .progress = TRUE)
-  
-  cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
-}
+# 
+# # Helper to delete observations in ER
+# delete_obs <- function(obs_ids, token){
+#   
+#   res <- purrr::map_dbl(obs_ids, function(id){
+#     
+#     api_endpnt <- file.path("https://standrews.dev.pamdas.org/api/v1.0/observation", id)
+#     
+#     req <- httr2::request(api_endpnt) |> 
+#       req_auth_bearer_token(token) |> 
+#       req_method("DELETE") |> 
+#       req_headers(
+#         "Accept" = "application/json",
+#         "Content-Type" = "application/json"
+#       )
+#     req |>  httr2::req_perform() |> httr2::resp_status()
+#   }, 
+#   .progress = TRUE)
+#   
+#   cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
+# }
 
 
 
@@ -115,7 +115,7 @@ test_that("Data posted and retrieved as expected: basic case", {
     move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
     slice(1:5)
   
-  posting_dttm <- now()
+  posting_dttm <- now() - seconds(5)
   
   expect_no_error(
     ra_post_obs(
@@ -123,7 +123,7 @@ test_that("Data posted and retrieved as expected: basic case", {
     tm_id_col = mt_time_column(dt),
     additional_cols = c(store_cols, cluster_cols),
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-    token = er_tokens$standrews.dev$brunoc#,
+    token = er_tokens$standrews.dev$brunoc
     )
   )
   
@@ -175,8 +175,7 @@ test_that("Data posted and retrieved as expected: handling of obs in ACTIVE clus
     slice_sample(n = 5, by = clust_id) |> 
     arrange(individual_local_identifier, timestamp)
   
-  
-  posting_dttm <- now()
+  posting_dttm <- now() - seconds(5)
   
   expect_no_error(
     ra_post_obs(
