@@ -412,30 +412,16 @@ fetch_hist <- function(api_base_url,
   
   
   # Handle retrieved datasets -------------------------------------
-  # If some of the conditions are met, forces function to return NULL
+  # NB: early versions would drop obs tagged as "CLOSED" at this point. However
+  # these obs MUST be kept for cross-referencing with the "new" dataset to
+  # handle duplication
   
-  ## Case 1: both datasets are empty. Two possibilities in ER's Observations table:
-  ##   - No records available
-  ##   - All observations are tagged with exclusion_flags AND none of the obs are in ACTIVE clusters
   if(nrow(obs_cluster_actv) == 0 && nrow(obs_cluster_non_excluded) == 0){
     return(NULL)
   }
-  
-  ## Case 2: No ACTIVE clusters, but non-excluded data present
-  if(nrow(obs_cluster_actv) == 0){
-    # "cluster_uuid" attribute not present (e.g. inaugural run)
-    if("cluster_uuid" %!in% names(obs_cluster_non_excluded)) return(NULL)
-    
-    # keep only un-clustered observations (i.e. with no cluster UUID annotated)
-    obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, is.na(cluster_uuid))
-  }
-    
-  # All observations are in CLOSED clusters
-  if(nrow(obs_cluster_non_excluded) == 0)  return(NULL)
 
   # stack-up the two datasets
   obs <- dplyr::bind_rows(obs_cluster_actv, obs_cluster_non_excluded)
-  
   
   # Retrieve required complementary data ------------------------------------------
   # Get manufacturer_id/tag_id, subject_name/individual_local_identifier 
@@ -1696,6 +1682,14 @@ merge_and_update <- function(matched_dt,
     ) |> 
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
   
+  
+  # We also MUST EXCLUDE previously "CLOSED" observations that reappear in the
+  # new data - short closing clusters will be recurrent in consecutive rolling
+  # windows which, if retained, might cause duplication issues (although I think
+  # there is an indirect safeguard as agent POSTing doesn't throw an error
+  # when the duplicates of obs are re-POSTed - still, we want do this explicitly)
+  merged_dt <- merged_dt |> 
+    dplyr::filter(cluster_status_hist == "ACTIVE" | is.na(cluster_status_hist))
   
   
   # Classify Cluster Status -------------------------------------
