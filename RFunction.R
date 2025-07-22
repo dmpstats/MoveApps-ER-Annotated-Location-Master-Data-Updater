@@ -1192,6 +1192,7 @@ match_sf_clusters <- function(hist_dt,
   # If we have a valid matching threshold, remove any matches that are outside
   # the threshold
   if (!is.na(days_thresh) && days_thresh > 0) {
+    
     time_matches <- matches |> 
       # We buffer the interval by half of days_thresh (rounded) and check overlap
       dplyr::mutate(
@@ -1199,9 +1200,8 @@ match_sf_clusters <- function(hist_dt,
         new_interval = lubridate::interval(new_start - lubridate::days(floor(days_thresh/2)), new_end + lubridate::days(ceiling(days_thresh/2))),
         VALID_TIME = lubridate::int_overlaps(master_interval, new_interval)
       ) |> 
-      
       # If the time match is invalid, delete the entry
-      dplyr::filter(!is.na(VALID_TIME) | VALID_TIME) |> 
+      dplyr::filter(VALID_TIME) |> 
       dplyr::select(master_cluster, new_cluster)
     
     logger.info(sprintf(

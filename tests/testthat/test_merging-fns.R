@@ -273,6 +273,57 @@ test_that("match_sf_clusters() works as expected", {
 
 
 
+
+
+test_that("match_sf_clusters(): option `days_thresh` works as expected", {
+  
+  # prepare 
+  hist <- test_sets$nam_1 |> 
+    filter(clust_id == "NAM.3") |> 
+    mutate(cluster_uuid = sub("NAM.", "CLST_", clust_id), .keep = "unused") |> 
+    rename(recorded_at = timestamp) 
+  
+  # convert to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  # same cluster (i.e. spatially identical) shifted by 20 days
+  new <- test_sets$nam_1 |> 
+    filter(clust_id %in% c("NAM.3")) |> 
+    mutate(
+      timestamp = timestamp + difftime((max(timestamp) + days(20)), min(timestamp))
+    )
+    
+  # case 1: temporal gap larger than specified thresh => two separate clusters with
+  # no match 
+  out <- match_sf_clusters(
+    hist_dt = hist, 
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    days_thresh = 7
+  )
+  
+  expect_length(out$match_tbl$master_cluster, 2)
+  expect_true(all(out$match_tbl$`Match Type` == "No Match"))
+  
+  # case 2: temporal gap shorter than specified thresh => same cluster (full match)
+  out <- match_sf_clusters(
+    hist_dt = hist, 
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    days_thresh = 31
+  )
+  
+  expect_length(out$match_tbl$master_cluster, 1)
+  expect_true(out$match_tbl$`Match Type` == "Full")
+  
+})
+
+
+
+
+
 # `merge_and_update()` -------------------------------------------------------
 
 
