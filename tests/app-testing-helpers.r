@@ -1,3 +1,7 @@
+require(httr2)
+require(purrr)
+
+
 #////////////////////////////////////////////////////////////////////////////////
 ## helper to get app key to then retrieve app secrets 
 get_app_key <- function() {
@@ -33,7 +37,7 @@ set_interactive_app_testing <- function(){
 
 
 # /////////////////////////////////////////////////////////////////////////////
-# Helper to delete observations in ER
+# ER API Helpers
 delete_obs <- function(obs_ids, token){
   
   res <- purrr::map_dbl(obs_ids, function(id){
@@ -53,6 +57,49 @@ delete_obs <- function(obs_ids, token){
   
   cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
 }
+
+
+get_sources <- function(api_base_url, token){
+  
+  api_endpnt <- file.path(api_base_url, "sources")
+  
+  req <- httr2::request(api_endpnt) |> 
+    req_auth_bearer_token(token) |> 
+    req_headers(
+      "Accept" = "application/json",
+      "Content-Type" = "application/json"
+    )
+  
+  httr2::req_perform(req) |> 
+    resp_body_json() |> 
+    pluck("data") |> 
+    pluck("results") 
+}
+  
+  
+
+delete_sources <- function(src_ids, api_base_url, token){
+ 
+  res <- map_dbl(src_ids, function(sid){
+    #browser()
+    api_endpnt <- file.path(api_base_url, "source", sid)#, "?async=true")
+    
+    req <- request(api_endpnt) |>
+      #req_url_query(async = TRUE) |>
+      req_method("DELETE") |> 
+      req_auth_bearer_token(token) |> 
+      req_headers(
+        "accept" = "application/json",
+        "Content-Type" = "application/json"
+      )
+    #req_dry_run(req)
+    
+    req_perform(req) |> httr2::resp_status()
+  }, .progress = TRUE)
+  
+  cli::cli_inform("Successfully deleted {sum(res == 204)} out of {length(src_ids)} sources from ER.")
+}
+
 
 
 ## /////////////////////////////////////////////////////////////////////////////
