@@ -781,7 +781,8 @@ get_obs <- function(api_base_url,
     data.frame()
   }
   
-  combined_obs
+  # ensure any duplicates are dropped
+  dplyr::distinct(combined_obs)
 }
 
 
