@@ -2120,11 +2120,12 @@ is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE))
 
 
 
-# wee wrapper to make UUID issuing tidyer in main function
+# wee wrapper to make UUID issuing tidier in main function
 generate_uuid <- function(n = 1){
   paste(
-    ids::adjective_animal(n = n, n_adjectives = 2, style = "camel"),
+    ids::adjective_animal(n = n, n_adjectives = 3, style = "camel"),
     format(Sys.time(), "%Y%m%d-%H%M%S"), 
+    #sample(1:1e3, 1),
     sep = "-")
 }
 
