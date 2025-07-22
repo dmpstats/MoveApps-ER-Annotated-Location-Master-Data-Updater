@@ -1600,13 +1600,7 @@ merge_and_update <- function(matched_dt,
       tag_id = manufacturer_id,
       {{timestamp_col}} := recorded_at
     )
-  
-    # dplyr::mutate(
-    #   individual_local_identifier = subject_name, 
-    #   tag_id = manufacturer_id,
-    #   {{timestamp_col}} := recorded_at, 
-    #   .keep = "unused"
-    # )
+
   
   # Coerce classes of columns in historic data to meet those in new data 
   matched_hist_dt <- coerce_col_types(matched_hist_dt, new_dt)
@@ -1677,7 +1671,7 @@ merge_and_update <- function(matched_dt,
       # tag new obs - will be those with an NA as observation_id.
       NEWOBS = ifelse(is.na(er_obs_id), TRUE, FALSE)
     ) |> 
-    dplyr::filter(                        
+    dplyr::filter(
       CLUSTERORIGIN == "NEW" | (CLUSTERORIGIN == "MASTER" & XTEMPCOUNT == 1)
     ) |> 
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
@@ -1767,23 +1761,28 @@ merge_and_update <- function(matched_dt,
     )
 
   # Run Checks and log summaries  ------------------------------------------
+  
+  # Nr. "ACTIVE" clusters in merged data
   clusters_merge <- merged_dt |> 
     data.frame() |> 
     count(cluster_uuid) |> 
     dplyr::filter(!is.na(cluster_uuid))
   
-  ## Count number of unique non-NA clusters
+  ## Nr of "ACTIVE" clusters in historical data
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
-    count(cluster_uuid) |>
-    dplyr::filter(!is.na(cluster_uuid))
+    count(cluster_uuid, cluster_status) |>
+    dplyr::filter(
+      !is.na(cluster_uuid),
+      cluster_status != "CLOSED"
+    )
   
   # check number of clusters
   if(nrow(clusters_merge) < nrow(clusters_hist)){
     cli::cli_abort(c(
-      "Unexpectedly low number of clusters in merged data.",
-      x = "Merged data contains fewer clusters than the historical dataset.",
-      i = "This suggests some historical clusters may have been inadvertently dropped during processing."
+      "Unexpectedly low number of {.val ACTIVE} clusters in merged data.",
+      x = "Merged data contains fewer {.val ACTIVE} clusters than the historical dataset.",
+      i = "This suggests {.val ACTIVE} clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
   
@@ -1807,14 +1806,22 @@ merge_and_update <- function(matched_dt,
   ))
   
   ## Status check and summary
-  status_summ <- merged_dt |> 
-    data.frame() |> 
-    filter(cluster_status == "CLOSED") |> 
-    count(cluster_uuid)
-  
-  if(nrow(status_summ) > 0){
+  if(any(merged_dt$cluster_status == "CLOSED", na.rm = TRUE)){
     
-    purrr::walk(status_summ$cluster_uuid, function(x){
+    # first summarization, for checking
+    closed_summ <- merged_dt |> 
+      dplyr::filter(cluster_status == "CLOSED") |> 
+      dplyr::group_by(cluster_uuid) |> 
+      dplyr::summarise( 
+        n_pts = dplyr::n(),
+        span = difftime(max(.data[[timestamp_col]]), min(.data[[timestamp_col]]), units = "days")
+      ) |> 
+      dplyr::mutate(
+        n_pts_bin = cut(n_pts, c(0, 10, 25, 50, 100, 250, 500, 1000, 1250, 1500, 2000, Inf)),
+        area = sf::st_convex_hull(geometry) |> sf::st_area()
+      ) 
+    
+    purrr::walk(closed_summ$cluster_uuid, function(x){
       cluster_dt <- filter(merged_dt, cluster_uuid == x)
       if(any(cluster_dt$cluster_status != "CLOSED")){
         cli::cli_abort(c(
@@ -1824,16 +1831,28 @@ merge_and_update <- function(matched_dt,
       }
     })
     
+    # further summarise by cluster size, for logging
+    closed_summ <- closed_summ |> 
+      dplyr::as_tibble() |> 
+      dplyr::group_by(n_pts_bin) |>
+      dplyr::summarise(
+        n_clusters = dplyr::n(),
+        span_min = as.numeric(min(span)) |> units::set_units("day"),
+        span_med =  as.numeric(median(span)) |> units::set_units("day"),
+        span_max = as.numeric(max(span)) |> units::set_units("day"),
+        area_min = min(area), area_med = median(area), area_max = max(area)
+      ) |> 
+      rename(n_pts = n_pts_bin)
+    
+    
     logger.info(
-      glue::glue_collapse(
-        c("  |- Closing the following cluster(s):", 
-          glue::glue_data(
-            status_summ,
-            "           * {cluster_uuid} (n = {n})" 
-          )
-        ), 
-        sep = "\n")
-      ) 
+      paste0(
+        #"  |- ", sum(closed_summ$n_clusters), " 'CLOSED' clusters. Summary by nr. points:\n\n",
+        "  |- Closing ", sum(closed_summ$n_clusters), " clusters. Summary by nr of points:\n\n",
+        paste0(capture.output(print(closed_summ, n = Inf)), collapse = "\n"),
+        "\n"
+      ))
+    
   }
   
   # Annotate patching and posting ----------------------------------------
