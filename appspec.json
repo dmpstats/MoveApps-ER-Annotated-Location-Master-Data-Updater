@@ -13,7 +13,7 @@
       "name": "EarthRanger API Key",
       "description": "A valid and active access token for the selected EarthRanger API Server.",
       "defaultValue": null,
-      "type": "STRING"
+      "type": "SECRET"
     },
     {
       "id": "cluster_id_col",
@@ -55,7 +55,7 @@
       "name": "Spatial-Matching Criteria",
       "description": "Whether clusters should be spatially matched-and-merged by their cluster centroids (centroid) or geometric medians (gmedian). Geometric median is recommended.",
       "defaultValue": "gmedian",
-      "type": "DROPDOWN",
+      "type": "RADIOBUTTONS",
       "options": [
         {
           "value": "gmedian",
@@ -65,6 +65,7 @@
           "value": "centroid",
           "displayText": "Cluster Centroid"
         }
+        ]
     },
     {
       "id": "active_days_thresh",
