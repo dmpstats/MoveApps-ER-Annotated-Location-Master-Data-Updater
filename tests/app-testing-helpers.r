@@ -59,6 +59,7 @@ delete_obs <- function(obs_ids, token){
 }
 
 
+
 get_sources <- function(api_base_url, token){
   
   api_endpnt <- file.path(api_base_url, "sources")
@@ -76,10 +77,10 @@ get_sources <- function(api_base_url, token){
     pluck("results") 
 }
   
-  
+
 
 delete_sources <- function(src_ids, api_base_url, token){
- 
+  
   res <- map_dbl(src_ids, function(sid){
     #browser()
     api_endpnt <- file.path(api_base_url, "source", sid)#, "?async=true")
@@ -95,16 +96,27 @@ delete_sources <- function(src_ids, api_base_url, token){
     #req_dry_run(req)
     
     req_perform(req) |> httr2::resp_status()
+    #req_perform_promise(req) %...>% httr2::resp_status()
+    
   }, .progress = TRUE)
   
-  cli::cli_inform("Successfully deleted {sum(res == 204)} out of {length(src_ids)} sources from ER.")
+  cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(src_ids)} sources from ER.")
 }
 
 
 
 ## /////////////////////////////////////////////////////////////////////////////
 # helper to run SDK testing with different settings
-run_sdk <- function(data, where){
+run_sdk <- function(data, 
+                    api_hostname = NULL,
+                    api_token = NULL,
+                    cluster_id_col = "clust_id",
+                    lookback = 30L,
+                    store_cols_str = NULL,
+                    days_thresh = 7,
+                    dist_thresh = 100,
+                    match_criteria = "gmedian",
+                    active_days_thresh = 14){
 
   require(jsonlite)
   
@@ -120,12 +132,20 @@ run_sdk <- function(data, where){
 
   # set configuration to specified inputs
   new_app_config <- list(
-    where = where
+    api_hostname = api_hostname,
+    api_token = api_token,
+    cluster_id_col = cluster_id_col,
+    lookback = lookback,
+    store_cols_str = store_cols_str,
+    days_thresh = days_thresh,
+    dist_thresh = dist_thresh,
+    match_criteria = match_criteria,
+    active_days_thresh = active_days_thresh
   )
   
   # overwrite config file with current inputs
   write(
-    jsonlite::toJSON(new_app_config, pretty = TRUE, auto_unbox = TRUE),
+    jsonlite::toJSON(new_app_config, pretty = TRUE, auto_unbox = TRUE, null = "null"),
     file = app_config_file
   )
 

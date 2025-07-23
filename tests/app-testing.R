@@ -24,6 +24,10 @@ nam_3mths <- httr2::secret_read_rds("data/raw/vult_test_data_nam3mths.rds", key 
 
 er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
+# activate browser() when there is an error, for interactive debugging
+#options(error = recover)
+
+#options(error = NULL)
 
 # ---------------------------------------- #
 # ----    Automated Unit testing        ----
@@ -168,29 +172,42 @@ delete_sources(
 # delete_obs(dt_master$id, er_tokens$standrews.dev$brunoc)
 
 
-
-
-
-
-
 # ---------------------------------------- #
 # ----    MoveApps SDK testing          ----
 # ---------------------------------------- #
 
-# # standard dataset with default inputs
-# run_sdk(test_dt, where = "sunny Scotland")
-#   
+store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
+
+# default inputs
+run_sdk(
+  test_dt$nam_2, 
+  api_hostname = "standrews.dev.pamdas.org", 
+  api_token = er_tokens$standrews.dev$brunoc, 
+  store_cols_str = paste(store_cols, collapse = ",")
+)
+
+
 # (output <- readRDS("data/output/output.rds"))
 
 
 
 
 
+# # ----------------------------------------- #
+# # ----   Simulation-based testing   ----
+# # ----------------------------------------- #
+# 
+# source("tests/simulate_cluster_merging.R")
+# 
+# 
+# simulate_cluster_merging()
+# 
+# rFunction(
+#   data = nam_1mth_thin, 
+#   api_hostname = "standrews.pamdas.org",
+#   api_token = "5GKEsdp0rZHgDMmCHYfswsgNYFtylt",
+#   store_cols_str = paste(store_cols, collapse = ",")
+# )
 
 
-# Functions responsible for merging historical and new datasets
-testthat::test_file("tests/testthat/test_merging-fns.R")
-
-# Main rFunction
-testthat::test_file("tests/testthat/test_RFunction.R")
 
