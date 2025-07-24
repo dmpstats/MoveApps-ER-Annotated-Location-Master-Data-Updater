@@ -35,7 +35,7 @@ The App performs three core tasks:
 3.  **Push to EarthRanger**\
     The resulting dataset - containing both new and updated records - is uploaded back to ER for permanent storage.
 
-Currently the App outputs an extended version of the input dataset, appending all location events associated with **currently active clusters**. These annotated, up-to-date subject-level location records, are intended for use in downstream Apps that perform cluster-based analysis, such as the [Avian Cluster Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2) and the [Cluster Importance Scoring](https://www.moveapps.org/apps/browser/e8f5b376-0858-4206-9861-e2cd5fcc8c41) Apps.
+Currently the App outputs an extended version of the input dataset, appending all location events associated with **currently ACTIVE clusters** (as well as in-between non-clustered locations). These annotated, up-to-date subject-level location records, are intended for use in downstream Apps that perform cluster-based analysis, such as the [Avian Cluster Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2) and the [Cluster Importance Scoring](https://www.moveapps.org/apps/browser/e8f5b376-0858-4206-9861-e2cd5fcc8c41) Apps.
 
 ### Cluster merging and updating {#cluster-merging-and-updating}
 
@@ -97,12 +97,24 @@ None.
 
 **Closure Threshold (days)** (`active_days_thresh`): Number of days after the most recent observation timestamp after which a cluster is considered closed. Clusters whose final timestamp is older than this threshold will not be included in future updates.
 
+
 ### Changes in output data
 
-The App expands the input data by appending all historical location records associated with **currently active clusters**. Two additional columns also also introduced:
+This App plays a central role in updating a master dataset stored in an external system (EarthRanger), while also preparing data for downstream workflow Apps. As such, it applies significant transformations to the input data. Key changes include:
 
--   `cluster_uuid` - the unique identifier of each cluster, as recorded in the ER master dataset.
--   `cluster_state`- the current status of the cluster, either `"ACTIVE"` or `"CLOSED"`.
+- The input data is expanded to include all historical location records linked to currently ACTIVE clusters, as well as in-between non-clustered locations for tracks/subjects associated with those clusters (all retrieved from ER via it's API).
+
+- Aside from `track_id_column`, `time-column` and the geometry `sf-column`, only those columns specified under parameter **Attributes to store in EarthRanger** (`store_cols`) are retained in the output.
+
+- The column defined as `track_id_column` in the input is renamed to `"track_id"` in the output. This aims to ensure consistency across scheduled runs and alignment with data stored in ER, even if the input column name varies over time.
+
+- The output's track-level table is reduced to the following attributes: "`track_id`", "`tag_id`", "`individual_local_identifier`", "`deployment_id`", "`individual_id`" & "`study_id`". (This list may be extended in future versions.)
+
+- Two additional columns are added to the output `<move2>` event table:
+    -   `cluster_uuid` - the unique identifier of each cluster, as stored in the ER master dataset.
+    -   `cluster_state`- the cluster's status at the time of the current run, either `"ACTIVE"` or `"CLOSED"`.
+
+
 
 ### Most common errors
 
@@ -116,6 +128,11 @@ The App will stop and return an error under any of the following conditions:
 
 -   Errors may occur due to brief network interruptions or issues with the MoveApps or ER hosting servers. However, such disruptions are expected to be infrequent and short-lived, as both platforms are reliable and well-maintained systems.
 
+
+
 ### Null or error handling
 
 -   **Attributes to Store in EarthRanger**: If set to `NULL` (the default), all attributes present in the input data will be passed to EarthRanger and stored in the master dataset.
+
+- **EarthRanger API Server** and **EarthRanger API Key**: These parameters are required. If left empty (NULL, the default), the App will throw an error. No default values are provided due to access restrictions and security considerations.
+
