@@ -157,8 +157,16 @@ er_sources <- get_sources(
 )
 
 source_ids <- purrr::keep(er_sources, \(s) s$provider == "moveapps_ann_locs") |> 
-  purrr::map(~ data.frame(source_id = .x$id, manufacturer_id = .x$manufacturer_id)) |> 
-  list_rbind()
+  purrr::map(~ data.frame(
+    source_id = .x$id, 
+    manufacturer_id = .x$manufacturer_id, 
+    provider = .x$provider
+  )) |> 
+  list_rbind() |> 
+  filter(
+    provider == "moveapps_ann_locs",
+    manufacturer_id %!in% c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
                    
   
 delete_sources(
@@ -176,6 +184,8 @@ delete_sources(
 # ----    MoveApps SDK testing          ----
 # ---------------------------------------- #
 
+posting_dttm <- now()
+
 store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
 
 # default inputs
@@ -186,9 +196,18 @@ run_sdk(
   store_cols_str = paste(store_cols, collapse = ",")
 )
 
+(output <- readRDS("data/output/output.rds"))
 
-# (output <- readRDS("data/output/output.rds"))
 
+# delete test observations from ER
+## first need to retrieve them to get the obs ids...
+pushed_test_obs <- get_obs(
+  created_after = posting_dttm, 
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+  token = er_tokens$standrews.dev$brunoc
+)
+# ... which can now be used to delete mentioned obs
+delete_obs(pushed_test_obs$id, er_tokens$standrews.dev$brunoc)
 
 
 
