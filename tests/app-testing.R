@@ -221,7 +221,7 @@ delete_obs(pushed_test_obs$id, er_tokens$standrews.dev$brunoc)
 # rFunction(
 #   data = nam_1mth_thin, 
 #   api_hostname = "standrews.pamdas.org",
-#   api_token = "5GKEsdp0rZHgDMmCHYfswsgNYFtylt",
+#   api_token = "oosoosooos",
 #   store_cols_str = paste(store_cols, collapse = ",")
 # )
 
