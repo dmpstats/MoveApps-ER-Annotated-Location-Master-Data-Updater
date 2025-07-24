@@ -52,6 +52,10 @@ rFunction = function(data,
   # TODO's
   # - generalize function to allow simple updating and storage of data in ER 
   #   (i.e. without cluster tracking and merging)?
+  #
+  # - include source_provider as an App input? Very reluctant of doing so for
+  #   many reasons (e.g. not easily interpretable by users; high potential for
+  #   errors and conflicts in data transmissions and storage, etc)
   
   # Input Validation ----------------------------------------------------------
   
@@ -812,7 +816,7 @@ get_source_details <- function(src, api_base_url, token){
 # ///////////////////////////////////////////////////////////////////////////////
 #' Helper to fetch information about the tagged subject
 #' 
-#' @param src character, the UUID of the source
+#' @param src single character string, the UUID of the source
 get_source_subjects <- function(src, api_base_url, token){
   
   req_url <- file.path(api_base_url, "source", src, "subjects")
