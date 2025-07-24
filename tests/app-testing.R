@@ -177,9 +177,6 @@ delete_sources(
 
 
 
-# delete_obs(dt_master$id, er_tokens$standrews.dev$brunoc)
-
-
 # ---------------------------------------- #
 # ----    MoveApps SDK testing          ----
 # ---------------------------------------- #
@@ -199,14 +196,14 @@ run_sdk(
 (output <- readRDS("data/output/output.rds"))
 
 
-# delete test observations from ER
-## first need to retrieve them to get the obs ids...
+
+# Clean up (observation-level as it's a small dataset)
 pushed_test_obs <- get_obs(
   created_after = posting_dttm, 
   api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
   token = er_tokens$standrews.dev$brunoc
 )
-# ... which can now be used to delete mentioned obs
+
 delete_obs(pushed_test_obs$id, er_tokens$standrews.dev$brunoc)
 
 
