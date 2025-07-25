@@ -1,3 +1,11 @@
 {
-  "where": "here"
+  "api_hostname": null,
+  "api_token": "secret",
+  "cluster_id_col": "clust_id",
+  "lookback": 30,
+  "store_cols_str": null,
+  "days_thresh": 7,
+  "dist_thresh": 100,
+  "match_criteria": "gmedian",
+  "active_days_thresh": 14
 }
