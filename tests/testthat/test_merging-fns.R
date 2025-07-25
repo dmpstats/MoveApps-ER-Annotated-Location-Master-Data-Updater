@@ -786,6 +786,57 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
     sum(out$cluster_uuid == "CLST_1", na.rm = TRUE)
   )
   
+  
+  
+  # case 4: a new observation is added to an already closed cluster
+  hist <- test_sets$nam_1 |> 
+    slice(1:40) |>
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mutate(
+      cluster_uuid = sub("NAM.", "CLST_", clust_id), 
+      cluster_status = ifelse(!is.na(cluster_uuid), "CLOSED", NA),
+      recorded_at = timestamp,
+      manufacturer_id = tag_id,
+      subject_name = individual_local_identifier,
+      er_obs_id = ids::uuid(n()),
+      
+      .keep = "unused"
+    ) |> 
+    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+  
+  # convert hist to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  new <- slice_tail(test_sets$nam_2, n = 9) |> 
+    mutate(timestamp = timestamp + days(30)) |> 
+    move2::mt_stack(slice(test_sets$nam_1, 41))
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")
+  
+  out <- merge_and_update(
+    matched_dt = matched_hist,
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+  
+  # CLST_1 should expand by one
+  expect_lt(
+    sum(hist$cluster_uuid == "CLST_1", na.rm = TRUE), 
+    sum(out$cluster_uuid == "CLST_1", na.rm = TRUE)
+  )
+
+  # POSTable entries: 1 for hist CLST_1 and 9 for new cluster
+  clust_sizes <- out |> 
+    data.frame() |> 
+    filter(out$request_type == "POST") |> 
+    count(cluster_uuid) |> 
+    pull(n)
+  
+  expect_equal(clust_sizes, c(1,9))
+  
 })
 
 

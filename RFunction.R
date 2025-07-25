@@ -1688,17 +1688,8 @@ merge_and_update <- function(matched_dt,
     ) |> 
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
   
-  
-  # We also MUST EXCLUDE previously "CLOSED" observations that reappear in the
-  # new data - short closing clusters will be recurrent in consecutive rolling
-  # windows which, if retained, might cause duplication issues (although I think
-  # there is an indirect safeguard as agent POSTing doesn't throw an error
-  # when the duplicates of obs are re-POSTed - still, we want do this explicitly)
-  merged_dt <- merged_dt |> 
-    dplyr::filter(cluster_status_hist == "ACTIVE" | is.na(cluster_status_hist))
-  
-  
-  # Classify Cluster Status -------------------------------------
+
+    # Classify Cluster Status -------------------------------------
   # Now we want to rewrite the cluster_status column to determine whether a cluster is 
   # ACTIVE or CLOSED. This will be determined by the most recent timestamp in all clusters:
   # if it was within active_days_thresh, then the cluster is ACTIVE, otherwise it is CLOSED.
@@ -1784,10 +1775,7 @@ merge_and_update <- function(matched_dt,
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
     count(cluster_uuid, cluster_status) |>
-    dplyr::filter(
-      !is.na(cluster_uuid),
-      cluster_status != "CLOSED"
-    )
+    dplyr::filter(!is.na(cluster_uuid))
   
   # check number of clusters
   if(nrow(clusters_merge) < nrow(clusters_hist)){
@@ -1807,6 +1795,8 @@ merge_and_update <- function(matched_dt,
   merge_summ <- dplyr::full_join(clusters_hist, clusters_merge, by = "cluster_uuid") |> 
     dplyr::mutate(diff = n.y - n.x)
   
+  #if(sum(merge_summ$diff < 0, na.rm = TRUE) > 0) browser()
+  
   logger.info(sprintf(
     "  |- Cluster-level merging summary:
            * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d
@@ -1818,13 +1808,14 @@ merge_and_update <- function(matched_dt,
   ))
   
   ## Status check and summary
-  if(any(merged_dt$cluster_status == "CLOSED", na.rm = TRUE)){
+  if(any(merged_dt$CLUSTERSTATUSCHANGED, na.rm = TRUE)){
     
     # first summarization, for checking
-    closed_summ <- merged_dt |> 
-      dplyr::filter(cluster_status == "CLOSED") |> 
+    closed_summ <- merged_dt |>
+      # summarise only for clusters closing in current run
+      dplyr::filter(CLUSTERSTATUSCHANGED == TRUE) |> 
       dplyr::group_by(cluster_uuid) |> 
-      dplyr::summarise( 
+      dplyr::summarise(
         n_pts = dplyr::n(),
         span = difftime(max(.data[[timestamp_col]]), min(.data[[timestamp_col]]), units = "days")
       ) |> 
