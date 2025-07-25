@@ -9,15 +9,16 @@ Github repository:
 
 ## Description
 
-This App enables the persistent storage and updating of annotated
-movement data in a master dataset hosted on an
-[EarthRanger](https://www.earthranger.com/) server. It is intended for
-workflows where MoveBank data has been classified with additional
-attributes - such as behavioural classifications or spatial cluster
-membership - and needs to be saved over time.
+This App facilitates the persistent storage and updating of annotated
+movement data within a master dataset hosted on an
+[EarthRanger](https://www.earthranger.com/) server. It is designed for
+workflows where MoveBank data has been processed - such as cleaned,
+standardized, or enriched with additional attributes like behavioral
+classifications or spatial cluster membership - and needs to be reliably
+stored and maintained over time.
 
-It is particularly useful in scheduled or automated workflows, where
-recent outputs from upstream Apps should be merged with existing records
+It is especially useful in scheduled workflows, where recent outputs
+from upstream Apps must be merged with existing historical records
 before being pushed to EarthRanger (ER) as part of a centralized data
 pipeline.
 
