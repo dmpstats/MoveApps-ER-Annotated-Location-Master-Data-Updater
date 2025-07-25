@@ -542,7 +542,7 @@ ra_post_obs <- function(data,
     data.frame() |>
     dplyr::mutate(
       # date-time cols formatted as ISO 8601 strings
-      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format(x, "%Y-%m-%d %X%z")),
+      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format_iso8601(x)),
       # convert any columns of class integer64 to string
       dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
       #drop units
@@ -570,6 +570,13 @@ ra_post_obs <- function(data,
       additional = lapply(additional, as.list),
       batch_id = 1:n() %/% batch_size
     )
+  
+  
+  # print the date-time format used for POSTing, for checking
+  logger.debug(
+    glue::glue("Example date-time string for POSTing (format ISO8601): {format_iso8601(data[[tm_id_col]][1])}")
+  )
+  
   
   # Perform, batch RA Post Request ------------------------------
   logger.info("POSTing observations to ER...")
@@ -878,7 +885,7 @@ patch_obs <- function(data,
     data.frame() |> 
     dplyr::mutate(
       # date-time cols formatted as ISO 8601 strings
-      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format(x, "%Y-%m-%d %X%z")),
+      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format_iso8601(x)),
       # convert any columns of class integer64 to string
       dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
       #drop units
@@ -2117,11 +2124,27 @@ get_subject_ids <- function(api_base_url, token){
     purrr::list_rbind()
 }
 
+
+
 # /////////////////////////////////////////////////////////////////////////////
 # Other short utility helpers
 
 #' check if vector is parseable into date-time (POSIXt)
 is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
+
+
+# wrapper to lubridate's `format_ISO8601()` to insert colon in TZ's time
+# component (i.e. +HH:MM), which seems to be a requirement when POSTing from
+# MoveApps to ER...
+format_iso8601 <- function(x, tz_colon = TRUE){
+  
+  if(!is.POSIXt(x)) cli::cli_abort("x must be a {.cls POSIXt} object, not {.cls {class(x)}}")
+  
+  out <- lubridate::format_ISO8601(x, usetz = TRUE)
+  
+  if(tz_colon) out <- sub('([+-][0-9]{2})([0-9]{2}$)','\\1:\\2', out, fixed = FALSE)
+  out
+}
 
 
 
@@ -2130,7 +2153,7 @@ generate_uuid <- function(n = 1){
   paste(
     ids::adjective_animal(n = n, n_adjectives = 3, style = "camel"),
     format(Sys.time(), "%Y%m%d-%H%M%S"), 
-    #sample(1:1e3, 1),
+    #sample(1:1e4, n),
     sep = "-")
 }
 
