@@ -255,7 +255,7 @@ rFunction = function(data,
     clustered_dt = clustered_dt,
     tm_id_col = "timestamp",
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-    token = er_tokens$standrews.dev$brunoc
+    token = api_token
   )
   
   # house-keeping
