@@ -1689,7 +1689,7 @@ merge_and_update <- function(matched_dt,
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
   
 
-    # Classify Cluster Status -------------------------------------
+  # Classify Cluster Status -------------------------------------
   # Now we want to rewrite the cluster_status column to determine whether a cluster is 
   # ACTIVE or CLOSED. This will be determined by the most recent timestamp in all clusters:
   # if it was within active_days_thresh, then the cluster is ACTIVE, otherwise it is CLOSED.
@@ -1713,6 +1713,7 @@ merge_and_update <- function(matched_dt,
       ),
       # But if the cluster is NA, set it to NA
       cluster_status = ifelse(is.na(XTEMPCLUSTERCOL), NA, cluster_status),
+      # flag a status change - clusters can only go from ACTIVE to CLOSED
       CLUSTERSTATUSCHANGED = if_else(cluster_status != cluster_status_hist, TRUE, FALSE)
     ) |> 
     dplyr::ungroup()
