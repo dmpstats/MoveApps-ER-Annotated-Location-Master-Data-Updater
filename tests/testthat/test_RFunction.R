@@ -33,9 +33,9 @@ test_that("output is a valid move2 object", {
   )
   
   # passes {move2} check
-  expect_true(move2::mt_is_move2(ouput_dt))
+  expect_true(move2::mt_is_move2(output_dt))
   # check if 1st class is "move2"
-  expect_true(class(ouput_dt)[1] == "move2")
+  expect_true(class(output_dt)[1] == "move2")
   
   # input and output have the same nr of rows
   expect_equal(nrow(input_dt), nrow(output_dt))
