@@ -1201,6 +1201,7 @@ match_sf_clusters <- function(hist_dt,
     ) #|>
   # dplyr::filter(!is.na(master_cluster) & !is.na(new_cluster)) # Remove any rows where no match was found
   
+  
   # If we have a valid matching threshold, remove any matches that are outside
   # the threshold
   if (!is.na(days_thresh) && days_thresh > 0) {
@@ -1737,10 +1738,49 @@ merge_and_update <- function(matched_dt,
     ) |> 
     dplyr::ungroup()
   
+  # Handle fusion events ------------------------------
+  
+  # It's entirely possible that 2x old clusters match 1x new, which breaks 
+  # the below left-join. We can handle this by retaining just one old ID.
+  fusion_events <- match_tbl |> 
+    group_by(new_cluster) |> 
+    filter(n() > 1)
+  if (nrow(fusion_events) > 1) {
+    
+    # For each fusion event, we just want to retain one historical ID
+    logger.info(
+      "  |- Found fusion events, where multiple old clusters match to a single new cluster. Resolving"
+    )
+    
+    temp_tbl <- match_tbl |> 
+      group_by(new_cluster) |> 
+      group_map(
+        .keep = T,
+        function(x, y) {
+          if (any(x$new_cluster %in% fusion_events$new_cluster)) {
+            # If this is a fusion event, we just want to retain the first old cluster
+            x <- x |> 
+              dplyr::slice(1) 
+          } else {
+            return(x)
+          }
+        }) |> 
+      bind_rows()
+    logger.info(sprintf(
+      "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
+      nrow(fusion_events)
+    ))
+    return(temp_tbl)
+  } else {temp_tbl <- match_tbl}
+  
+  # Ensure that there are no duplicate new clusters - if so, throw an error
+  if (any(duplicated(temp_tbl$new_cluster))) {
+    logger.fatal("Duplicate new clusters found in joining-table. This is unexpected and indicates a problem with the matching process.")
+  }
+  
   ## Join match_tbl to merged data
   ## NOTE: "new_cluster" contains all the current clusters, old and new
-  merged_dt <- left_join(merged_dt, match_tbl, by = c("XTEMPCLUSTERCOL" = "new_cluster"))
-  
+  merged_dt <- left_join(merged_dt, temp_tbl, by = c("XTEMPCLUSTERCOL" = "new_cluster"))
   
   # Classify obs cluster-merging status ----------------------------------------
   ## Combine information on historic and new UUIDs to work out observation-level

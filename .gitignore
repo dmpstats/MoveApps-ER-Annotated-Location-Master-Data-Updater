@@ -17,3 +17,5 @@ testing_match_plot.png
 testing_output_data.rds
 update_cluster_IDs.R
 prepare_for_ER.R
+scrap.R
+troubled_dt.rds
