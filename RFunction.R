@@ -1863,13 +1863,14 @@ merge_and_update <- function(matched_dt,
     sum(is.na(merge_summ$n.x))
   ))
   
-  ## Status check and summary
-  if(any(merged_dt$CLUSTERSTATUSCHANGED, na.rm = TRUE)){
-    
+  ## Closing clusters: check and summary
+  just_closed <- merged_dt$cluster_status == "CLOSED" & merged_dt$CLUSTERSTATUSCHANGED == TRUE
+  
+  if(any(just_closed, na.rm = TRUE)){
     # first summarization, for checking
     closed_summ <- merged_dt |>
       # summarise only for clusters closing in current run
-      dplyr::filter(CLUSTERSTATUSCHANGED == TRUE) |> 
+      dplyr::filter(just_closed) |> 
       dplyr::group_by(cluster_uuid) |> 
       dplyr::summarise(
         n_pts = dplyr::n(),
