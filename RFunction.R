@@ -1743,39 +1743,54 @@ merge_and_update <- function(matched_dt,
   # It's entirely possible that 2x old clusters match 1x new, which breaks 
   # the below left-join. We can handle this by retaining just one old ID.
   fusion_events <- match_tbl |> 
-    group_by(new_cluster) |> 
-    filter(n() > 1)
+    dplyr::group_by(new_cluster) |> 
+    dplyr::filter(n() > 1)
+  
   if (nrow(fusion_events) > 1) {
     
     # For each fusion event, we just want to retain one historical ID
-    logger.info(
-      "  |- Found fusion events, where multiple old clusters match to a single new cluster. Resolving"
-    )
+    logger.info("  |- Found fusion events, where multiple old clusters match to a single new cluster. Resolving")
     
     temp_tbl <- match_tbl |> 
-      group_by(new_cluster) |> 
-      group_map(
-        .keep = T,
+      dplyr::group_by(new_cluster) |> 
+      dplyr::group_map(
+        .keep = TRUE,
         function(x, y) {
           if (any(x$new_cluster %in% fusion_events$new_cluster)) {
-            # If this is a fusion event, we just want to retain the first old cluster
-            x <- x |> 
-              dplyr::slice(1) 
-          } else {
-            return(x)
+            if(all(x$`Match Type` == "Full")){
+              # Case 1: 2 old <Full Match -> 1 new ------
+              # Solution: drop the row of 2nd old cluster => obs will take the cluster ID
+              # of 1st old cluster (i.e. get TRANSFERRED)
+              x <- dplyr::slice(x, 1)   
+            } else if(all(x$`Match Type` %in% c("Partial", "Full"))  && nrow(x) == 2) {
+              # Case 2: 2 old <1 Full & 1 Partial -> 1 new ------
+              # Solution: drop row with "Full Match", which will force those obs
+              # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
+              x <- filter(x, x$`Match Type` == "Partial")
+            } else{
+              logger.debug("Found a new edge case while attempting to fuse clusters - forcing a debug!")
+              browser()
+            }
           }
+          return(x)
         }) |> 
-      bind_rows()
+      dplyr::bind_rows()
+    
     logger.info(sprintf(
       "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
       nrow(fusion_events)
     ))
-    return(temp_tbl)
-  } else {temp_tbl <- match_tbl}
+    
+  } else {
+    temp_tbl <- match_tbl
+  }
   
   # Ensure that there are no duplicate new clusters - if so, throw an error
   if (any(duplicated(temp_tbl$new_cluster))) {
-    logger.fatal("Duplicate new clusters found in joining-table. This is unexpected and indicates a problem with the matching process.")
+    cli::cli_abort(c(
+      "Duplicate new clusters found in joining-table.",
+      x = "This is unexpected and indicates a problem with the matching process."
+    ))
   }
   
   ## Join match_tbl to merged data
