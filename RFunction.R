@@ -408,6 +408,7 @@ fetch_hist <- function(api_base_url,
   # are tagged with a "3rd party flag" to allow for filtering, means that filter = 0 
   # now also returns obs in ACTIVE clusters. Therefore, an additional
   # filtering step is required here on the fetched data to keep non-excluded 0s (i.e.
+  # non-clustered and closed clusters)
   obs_cluster_non_excluded <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
@@ -1751,7 +1752,11 @@ merge_and_update <- function(matched_dt,
   # the below left-join. We can handle this by retaining just one old ID.
   fusion_events <- match_tbl |> 
     dplyr::group_by(new_cluster) |> 
-    dplyr::filter(n() > 1)
+    dplyr::filter(n() > 1) |> 
+    dplyr::mutate(
+      fusion_id = dplyr::cur_group_id(),
+      fusion_n = dplyr::n()
+    )
   
   if (nrow(fusion_events) > 1) {
     
@@ -1765,12 +1770,12 @@ merge_and_update <- function(matched_dt,
         function(x, y) {
           if (any(x$new_cluster %in% fusion_events$new_cluster)) {
             if(all(x$`Match Type` == "Full")){
-              # Case 1: 2 old <Full Match -> 1 new ------
+              # Case 1: 2 old <Full Match -> 1 new
               # Solution: drop the row of 2nd old cluster => obs will take the cluster ID
               # of 1st old cluster (i.e. get TRANSFERRED)
               x <- dplyr::slice(x, 1)   
             } else if(all(x$`Match Type` %in% c("Partial", "Full"))  && nrow(x) == 2) {
-              # Case 2: 2 old <1 Full & 1 Partial -> 1 new ------
+              # Case 2: 2 old <1 Full & 1 Partial -> 1 new 
               # Solution: drop row with "Full Match", which will force those obs
               # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
               x <- filter(x, x$`Match Type` == "Partial")
@@ -1785,7 +1790,7 @@ merge_and_update <- function(matched_dt,
     
     logger.info(sprintf(
       "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
-      nrow(fusion_events)
+      dplyr::n_groups(fusion_events)
     ))
     
   } else {
@@ -1831,23 +1836,38 @@ merge_and_update <- function(matched_dt,
   # Nr. "ACTIVE" clusters in merged data
   clusters_merge <- merged_dt |> 
     data.frame() |> 
-    count(cluster_uuid) |> 
-    dplyr::filter(!is.na(cluster_uuid))
+    count(cluster_uuid, cluster_status) |> 
+    dplyr::filter(
+      !is.na(cluster_uuid),
+      #cluster_status == "ACTIVE"
+    )
   
   ## Nr of "ACTIVE" clusters in historical data
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
     count(cluster_uuid, cluster_status) |>
-    dplyr::filter(!is.na(cluster_uuid))
+    dplyr::filter(
+      !is.na(cluster_uuid),
+      #cluster_status == "ACTIVE"
+    )
+  
+  # account for clusters "dropped" due to fusion
+  cluster_reduction <- fusion_events |> 
+    group_by(fusion_id) |> 
+    summarise(cluster_reduction = max(fusion_n) - 1) |> 
+    pull(cluster_reduction)
+  
   
   # check number of clusters
-  if(nrow(clusters_merge) < nrow(clusters_hist)){
+  if(nrow(clusters_merge) < (nrow(clusters_hist) - cluster_reduction)){
     cli::cli_abort(c(
       "Unexpectedly low number of {.val ACTIVE} clusters in merged data.",
       x = "Merged data contains fewer {.val ACTIVE} clusters than the historical dataset.",
       i = "This suggests {.val ACTIVE} clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
+  
+  
   
   ## check obs merge status 
   if(any(is.na(merged_dt$cluster_merge_status))){
