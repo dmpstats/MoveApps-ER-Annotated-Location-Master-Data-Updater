@@ -1761,10 +1761,7 @@ merge_and_update <- function(matched_dt,
   fusion_events <- match_tbl |> 
     dplyr::group_by(new_cluster) |> 
     dplyr::filter(n() > 1) |> 
-    dplyr::mutate(
-      fusion_id = dplyr::cur_group_id(),
-      fusion_n = dplyr::n()
-    )
+    dplyr::mutate(fusion_id = dplyr::cur_group_id())
   
   if (nrow(fusion_events) > 1) {
     
@@ -1778,17 +1775,19 @@ merge_and_update <- function(matched_dt,
         function(x, y) {
           if (any(x$new_cluster %in% fusion_events$new_cluster)) {
             if(all(x$`Match Type` == "Full")){
-              # Case 1: 2 old <Full Match -> 1 new
+              #browser()
+              # Case 1: 2 old [Full Match] -> 1 new
               # Solution: drop the row of 2nd old cluster => obs will take the cluster ID
               # of 1st old cluster (i.e. get TRANSFERRED)
               x <- dplyr::slice(x, 1)   
-            } else if(all(x$`Match Type` %in% c("Partial", "Full"))  && nrow(x) == 2) {
-              # Case 2: 2 old <1 Full & 1 Partial -> 1 new 
-              # Solution: drop row with "Full Match", which will force those obs
-              # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
-              x <- filter(x, x$`Match Type` == "Partial")
+            # } else if(all(x$`Match Type` %in% c("Partial", "Full"))  && nrow(x) == 2) {
+            #   # Case 2: 2 old [1 Full & 1 Partial] -> 1 new 
+            #   # Solution: drop row with "Full Match", which will force those obs
+            #   # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
+            #   browser()
+            #   x <- filter(x, x$`Match Type` == "Partial")
             } else{
-              logger.debug("Found a new edge case while attempting to fuse clusters - forcing a debug!")
+              logger.warn("Found a new edge case while attempting to fuse clusters - forcing a debug!")
               browser()
             }
           }
@@ -1805,6 +1804,7 @@ merge_and_update <- function(matched_dt,
     temp_tbl <- match_tbl
   }
   
+
   # Ensure that there are no duplicate new clusters - if so, throw an error
   if (any(duplicated(temp_tbl$new_cluster))) {
     cli::cli_abort(c(
@@ -1859,15 +1859,19 @@ merge_and_update <- function(matched_dt,
       #cluster_status == "ACTIVE"
     )
   
-  # account for clusters "dropped" due to fusion
-  cluster_reduction <- fusion_events |> 
-    group_by(fusion_id) |> 
-    summarise(cluster_reduction = max(fusion_n) - 1) |> 
-    pull(cluster_reduction)
+  # account for "vanishing" clusters due to fusion
+  if(nrow(fusion_events) > 0){
+    cluster_reduction <- fusion_events |> 
+      group_by(fusion_id) |> 
+      summarise(cluster_reduction = dplyr::n() - 1) |> 
+      pull(cluster_reduction)  
+  }else{
+    cluster_reduction <- 0
+  }
   
   
   # check number of clusters
-  if(nrow(clusters_merge) < (nrow(clusters_hist) - cluster_reduction)){
+  if(nrow(clusters_merge) < (nrow(clusters_hist) - sum(cluster_reduction))){
     cli::cli_abort(c(
       "Unexpectedly low number of {.val ACTIVE} clusters in merged data.",
       x = "Merged data contains fewer {.val ACTIVE} clusters than the historical dataset.",
@@ -1890,11 +1894,12 @@ merge_and_update <- function(matched_dt,
   
   logger.info(sprintf(
     "  |- Cluster-level merging summary:
-           * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d
+           * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d | Fused: %d
            * New Clusters: %d",
     sum(merge_summ$diff > 0, na.rm = TRUE), 
     sum(merge_summ$diff < 0, na.rm = TRUE),
     sum(merge_summ$diff == 0, na.rm = TRUE),
+    sum(!is.na(merge_summ$n.x) & is.na(merge_summ$n.y) & is.na(merge_summ$cluster_status.y)),
     sum(is.na(merge_summ$n.x))
   ))
   
@@ -1982,6 +1987,11 @@ merge_and_update <- function(matched_dt,
     sum(is.na(merged_dt$request_type))
   ))
   
+  # Store UUIDs of melded clusters in fusion events  ------------------------
+  # ids stored as an attribute of the output data, for later reference
+  fused_cluster_uuid <- setdiff(fusion_events$cluster_uuid, temp_tbl$cluster_uuid)
+  attr(merged_dt, "fused_cluster_uuid") <- fused_cluster_uuid
+  
   # Tidy-up and output ----------------------------------------
   merged_dt <- merged_dt |> 
     dplyr::select(-any_of(c(
@@ -1998,7 +2008,7 @@ merge_and_update <- function(matched_dt,
 #' Fetch and stack non-clustered observations from subjects involved in the
 #' clusters, within each cluster's time window.
 #' 
-#' This is to ensure track/movement data is provided in ints entirity to downstream
+#' This is to ensure track/movement data is provided in its entirety to downstream
 #' Apps (e.g. the Metrics Apps)
 #'  
 #' **IMPORTANT**: This function MUST be run **AFTER** the latest merged data is pushed to
