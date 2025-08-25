@@ -1,6 +1,7 @@
 require(httr2)
 require(purrr)
 
+`%notin%` <- Negate(`%in%`)
 
 #////////////////////////////////////////////////////////////////////////////////
 ## helper to get app key to then retrieve app secrets 
@@ -81,6 +82,8 @@ get_sources <- function(api_base_url, token){
 
 delete_sources <- function(src_ids, api_base_url, token){
   
+  #cli::cli_inform("Deleting sources")
+  
   res <- map_dbl(src_ids, function(sid){
     #browser()
     api_endpnt <- file.path(api_base_url, "source", sid)#, "?async=true")
@@ -100,8 +103,75 @@ delete_sources <- function(src_ids, api_base_url, token){
     
   }, .progress = TRUE)
   
-  cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(src_ids)} sources from ER.")
+  cli::cli_alert_info("Successfully deleted {sum(res == 200)} out of {length(src_ids)} source{?s} from ER.")
 }
+
+
+
+
+delete_subjects <- function(subj_ids, api_base_url, token){
+  
+  #cli::cli_inform("Deleting subjects")
+  
+  res <- map_dbl(subj_ids, function(id){
+    #browser()
+    req <- request(file.path(api_base_url, "subject", id)) |>
+      req_method("DELETE") |> 
+      req_auth_bearer_token(token) |> 
+      req_headers(
+        "accept" = "application/json",
+        "Content-Type" = "application/json"
+      )
+    #req_dry_run(req)
+    
+    req_perform(req) |> httr2::resp_status()
+  }, .progress = TRUE)
+  
+  cli::cli_alert_info("Successfully deleted {sum(res == 200)} out of {length(subj_ids)} subject{?s} from ER.")
+}
+
+
+
+# Erases all sources, related observations and assigned subjects associated to the
+# specified source `provider`. Essentially performs a deep clean on ER's
+# "Observations" section, allowing for clean testing
+deep_clean_obs <- function(api_base_url, token, provider = "moveapps_ann_locs", sources_to_keep){
+  
+  cli::cli_inform("Cleaning Up sources, observations and subjects in ER")
+  
+  # get sources adnd their IDs
+  obs_sources <- get_sources(api_base_url, token)
+  
+  source_ids <- purrr::keep(obs_sources, \(s) s$provider == provider) |> 
+    purrr::map(~ data.frame(
+      source_id = .x$id, 
+      manufacturer_id = .x$manufacturer_id, 
+      provider = .x$provider
+    )) |> 
+    list_rbind() |> 
+    filter(manufacturer_id %notin% sources_to_keep)
+  
+  # get subjects assigned to sources
+  source_subject <- purrr::map(
+    source_ids$source_id, function(x){
+      sub_dets <- get_source_subjects(x, api_base_url, token)[[1]]
+      data.frame(
+        source_id = x, 
+        subject_id = sub_dets$id,
+        subject_name = sub_dets$name
+      )
+    }) |> 
+    purrr::list_rbind()
+  
+  # delete sources and, consequently, their respective observations entries
+  delete_sources(source_ids$source_id, api_base_url, token)  
+  
+  # delete subjects assigned to sources, as they're retained in ER despite sources being deleted
+  delete_subjects(subj_ids = source_subject$subject_id, api_base_url, token)
+}
+
+
+
 
 
 
