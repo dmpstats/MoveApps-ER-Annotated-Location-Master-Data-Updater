@@ -240,21 +240,17 @@ test_that("match_sf_clusters() works as expected", {
   
   
   # case 4: change distance thresh, leading to one additional non matched cluster
-  
-  suppressWarnings(
-    out <- match_sf_clusters(
+  out <- match_sf_clusters(
       hist_dt = hist, 
       new_dt = slice(test_sets$nam_1, 30:100), 
       cluster_id_col = "clust_id", 
       timestamp_col = "timestamp", 
       dist_thresh = units::set_units(1, "m"),
       plot_results = TRUE)
-  )
   
   expect_snapshot(out$matched_master_data)
   expect_snapshot(out$match_table)
   expect_doppelganger("match-clusters-case-4", out$match_plot)
-  
   
   # out$match_table |> 
   #   dplyr::group_by(master_cluster) |> 
@@ -563,7 +559,7 @@ test_that("merge_and_update() Case 4: obs get dropped/recruited from/to cluster"
     mutate(
       clust_id = if_else(clust_id == "NAM.5" & row_number() %in% c(2), NA, clust_id),
       .by = clust_id
-      )
+    )
   
   # run cluster matching
   matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")
@@ -654,6 +650,8 @@ test_that("merge_and_update() Case 5: cluster splits into 2 clusters", {
   )
   
   # 1 new cluster
+  hist_clusts <- unique(na.omit(hist$cluster_uuid))
+  new_clusts <- unique(na.omit(out$cluster_uuid))
   expect_length(setdiff(new_clusts, hist_clusts), 1)
   
   # 2 observations have been transferred
@@ -672,6 +670,11 @@ test_that("merge_and_update() Case 5: cluster splits into 2 clusters", {
   expect_equal(sum(out$request_type == "PATCH", na.rm = TRUE), 2)
   
 })
+
+
+
+
+
 
 
 
@@ -896,5 +899,94 @@ test_that("merge_and_update() changes in store cols are detected an patched", {
   # No changes in cluster membership
   expect_equal( out$cluster_uuid, hist$cluster_uuid)
 })
+
+
+
+
+
+
+
+test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  
+  # prepare 
+  dt <- test_sets$nam_1 |> filter(clust_id %in% c("NAM.3", NA))
+  
+  # force a split on one cluster, for historical
+  hist <- dt |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mutate(
+      clust_id = case_when(
+        clust_id == "NAM.3" & row_number() <= 20 ~ "NAM.000",
+        clust_id == "NAM.3" & row_number() > 20 ~ "NAM.001",#
+        is.na(clust_id) ~ NA),
+      cluster_uuid = sub("NAM.", "CLST_", clust_id),
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
+      recorded_at = timestamp,
+      manufacturer_id = tag_id,
+      subject_name = individual_local_identifier,
+      er_obs_id = ids::uuid(n()),
+      .keep = "unused"
+    ) |> 
+    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+  
+  # convert hist to `<sf>` 
+  class(hist) <- class(hist) %>% setdiff("move2")
+  
+  # set new data (containing the fusing event)
+  new <- mutate(dt, clust_id = ifelse(clust_id == "NAM.3", "FUSION_CASE_1", NA))
+  
+  # run cluster matching
+  matched_hist <- match_sf_clusters(hist, new, "clust_id", "timestamp")
+  
+  # run merging
+  out <- merge_and_update(
+    matched_dt = matched_hist,
+    new_dt = new, 
+    cluster_id_col = "clust_id", 
+    timestamp_col = "timestamp", 
+    store_cols = store_cols
+  )
+  
+  # UUID of fused cluster
+  fused_cluster_uuid <- attr(out, "fused_cluster_uuid")
+  
+  expect_true(fused_cluster_uuid == "CLST_001")
+  
+  # all datasets should have identical nr of rows
+  expect_true(nrow(out) == nrow(new) & nrow(out) == nrow(hist))
+  
+  # no observations annotated with fused cluster UUID
+  expect_true(sum(out$cluster_uuid == fused_cluster_uuid, na.rm = TRUE) == 0)
+  
+  # all clustered observations are in the non-nullified cluster
+  expect_equal(
+    sum(out$cluster_uuid != fused_cluster_uuid, na.rm = TRUE), 
+    sum(!is.na(out$clust_id))
+  )
+  
+  # number of transferred obs must be equal to nr of obs annotated to fused
+  # cluster in historical data
+  expect_equal(
+    sum(out$cluster_merge_status == "TRANSFERRED", na.rm = TRUE),
+    sum(hist$cluster_uuid == fused_cluster_uuid, na.rm = TRUE)
+  )
+
+  # number of PATCHable obs must be equal to nr of obs annotated to fused
+  # cluster in historical data
+  expect_equal(
+    sum(out$request_type == "PATCH", na.rm = TRUE), 
+    sum(hist$cluster_uuid == fused_cluster_uuid, na.rm = TRUE)
+  )
+  
+  # retained cluster gets expanded
+  expect_lt(
+    sum(hist$cluster_uuid != fused_cluster_uuid, na.rm = TRUE), 
+    sum(out$cluster_uuid != fused_cluster_uuid, na.rm = TRUE)
+  )
+  
+})
+
 
 
