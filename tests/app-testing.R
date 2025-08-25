@@ -61,11 +61,11 @@ set_interactive_app_testing()
 store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
 
 nam_1mth_thin <- mt_filter_per_interval(nam_3mths, unit = "5 min") |> 
-  filter(timestamp < min(timestamp) + days(50))
+  filter(timestamp < min(timestamp) + days(70))
 
 ## schedule run parameters
 window_span <- days(15)
-window_shift <- days(2)
+window_shift <- days(3)
 start_dttm <- min(nam_1mth_thin$timestamp)
 end_dttm <- max(nam_1mth_thin$timestamp)
 
@@ -77,10 +77,20 @@ window_intervals <- tibble(
 
 # Run ----------
 
+# initialize iteration counter
+step <- 1
+nruns <- nrow(window_intervals)
+
 window_outputs <- window_intervals |> 
   #slice(1:3) |> 
   pmap(function(start, end){
     #browser()
+    
+    cli::cli_rule()
+    cli::cli_h1("Starting Iterative Run {step}/{nruns} @ {now()}")
+    
+    start_run_tm <- now()
+    
     out <- nam_1mth_thin |> 
       filter(between(timestamp, start, end)) |> 
       rFunction(
@@ -91,11 +101,19 @@ window_outputs <- window_intervals |>
         days_thresh = 14
       )
     
+    end_run_tm <- now()
+    
+    cli::cli_h2("Finished Run {step}/{nruns}. Runtime: {end_run_tm - start_run_tm}}")
+    
+    # update iterating counter
+    step <<- step + 1
+    
     Sys.sleep(2)
+    
     out
-  }, 
-  .progress = TRUE
-  )
+  })
+
+
 
 # checks -------------------
 
@@ -136,8 +154,8 @@ processed_clusters <- dt_master |>
 # Nearly full consistency between original and split-and-merged data. The
 # exception comprises 2 similar cases (out of 149) where the scheduled run
 # splits the original cluster into two separate clusters. Checks show deviation
-# could be explained by slight differences between the settings specified to
-# this App and those used in Clustering App used to create the original data.
+# is explained by the slightly different cluster-expiration logic applied in
+# the Clustering App - where the temporal cut-off is "less rigid".
 # Given the choice of "14 days" for `days_thresh`, the decision to split the
 # clusters appears correct.
 full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |> 
@@ -145,8 +163,26 @@ full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |>
     n_diff = n.x - n.y,
     #spawn_diff = difftime(end.x, end.y, units = "days")
   ) |> 
-  print(n = 200)
+  print(n = 202)
 
+
+# # check time gaps in input data
+# nam_1mth_thin |> 
+#   filter(clust_id == "NAM.45") |> 
+#   mutate(timelag = difftime(timestamp, lag(timestamp), units = "days")) |> 
+#   select(individual_local_identifier, timestamp, behav, clust_id, timelag ) |> 
+#   print(n = 115)
+
+# re_clust <- nam_1mth_thin |> 
+#   filter(clust_id == "NAM.45") |> 
+#   select(-clust_id) |> 
+#   cluster_app(
+#     clustercode = "NAM", 
+#     match_thresh = 175, 
+#     clustexpiration = 14,
+#     path_to_app = apps_paths$clust
+#   ) 
+  
 
 
 # Clean ER -------------------------------------
