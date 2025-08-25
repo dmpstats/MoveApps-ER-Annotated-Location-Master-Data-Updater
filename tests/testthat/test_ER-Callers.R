@@ -213,7 +213,8 @@ test_that("Data posted and retrieved as expected: handling of obs in ACTIVE clus
     include_details = TRUE, 
     filter = 0,
     created_after = posting_dttm
-  )
+  ) |> 
+    dplyr::filter(exclusion_flags == 0)
   
   dt_closed <- filter(dt, cluster_status == "CLOSED")
   dt_unclust <- filter(dt, is.na(cluster_status))
