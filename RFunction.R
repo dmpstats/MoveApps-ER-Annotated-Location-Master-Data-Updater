@@ -811,7 +811,7 @@ get_obs <- function(api_base_url,
 # ///////////////////////////////////////////////////////////////////////////////
 #' Helper to fetch information about the transmitting device (i.e. manufactors ID)
 #' 
-#' @param src character, the UUID of the source (i.e. the tag ID)
+#' @param src character, the source UUID (i.e. the tag ID)
 get_source_details <- function(src, api_base_url, token){
   
   req_url <- file.path(api_base_url, "source", src)
@@ -1730,7 +1730,8 @@ merge_and_update <- function(matched_dt,
       ),
       # But if the cluster is NA, set it to NA
       cluster_status = ifelse(is.na(XTEMPCLUSTERCOL), NA, cluster_status),
-      # flag a status change - clusters can only go from ACTIVE to CLOSED
+      #cluster_status = ifelse(cluster_status_hist == "CLOSED", "CLOSED", cluster_status),
+      # flag a status change - clusters can go from ACTIVE to CLOSED
       CLUSTERSTATUSCHANGED = if_else(cluster_status != cluster_status_hist, TRUE, FALSE)
     ) |> 
     dplyr::ungroup()
@@ -2089,7 +2090,7 @@ fill_track_gaps <- function(clustered_dt,
   
   # Handle retrieved data  ----------------------------------------------------
   # Retrieved data will have observations not tagged with exclusion flag used
-  # for marking membership to "ACTIVE" clusters, so either non-clustered and
+  # for marking membership to "ACTIVE" clusters, so both  non-clustered and
   # those members to "CLOSED" clusters. 
   # *In addition*, the GET query is oblivious to the obs source provider, so to
   # avoid duplicates from subjects included in more than one source provider
