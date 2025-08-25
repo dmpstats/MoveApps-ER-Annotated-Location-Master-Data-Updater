@@ -1,7 +1,7 @@
 # Input validation works as expected
 
     Code
-      rFunction(data = test_dt$nam_1)
+      rFunction(data = test_sets$nam_1)
     Output
       [INFO] Checking inputs
     Condition
@@ -12,7 +12,7 @@
 ---
 
     Code
-      rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk")
+      rFunction(data = test_sets$nam_1, api_hostname = "bla.co.uk")
     Output
       [INFO] Checking inputs
     Condition
@@ -23,7 +23,7 @@
 ---
 
     Code
-      rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = NULL)
+      rFunction(data = test_sets$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = NULL)
     Output
       [INFO] Checking inputs
       [FATAL] `cluster_id_col` is missing.
@@ -35,7 +35,7 @@
 ---
 
     Code
-      rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = "ABSENT_COLUMN")
+      rFunction(data = test_sets$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = "ABSENT_COLUMN")
     Output
       [INFO] Checking inputs
       [FATAL] Input data does not have column 'ABSENT_COLUMN'. Please provide a valid column name with cluster ID annotations.
@@ -48,7 +48,7 @@
 ---
 
     Code
-      rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = "clust_id", lookback = 1.2)
+      rFunction(data = test_sets$nam_1, api_hostname = "bla.co.uk", api_token = "XYZ", cluster_id_col = "clust_id", lookback = 1.2)
     Output
       [INFO] Checking inputs
     Condition
