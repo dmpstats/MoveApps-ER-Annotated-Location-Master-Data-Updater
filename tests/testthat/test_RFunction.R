@@ -73,14 +73,14 @@ test_that("Input validation works as expected", {
   testthat::local_edition(3)
   
   # missing `hostname` or `token`
-  expect_snapshot(rFunction(data = test_dt$nam_1), error = TRUE)
-  expect_snapshot(rFunction(data = test_dt$nam_1, api_hostname = "bla.co.uk"), error = TRUE)
+  expect_snapshot(rFunction(data = test_sets$nam_1), error = TRUE)
+  expect_snapshot(rFunction(data = test_sets$nam_1, api_hostname = "bla.co.uk"), error = TRUE)
   
   
   # `cluster_id_col`: unspecified or absent from input data
   expect_snapshot(
     rFunction(
-      data = test_dt$nam_1, 
+      data = test_sets$nam_1, 
       api_hostname = "bla.co.uk", 
       api_token = "XYZ", 
       cluster_id_col = NULL
@@ -90,7 +90,7 @@ test_that("Input validation works as expected", {
   
   expect_snapshot(
     rFunction(
-      data = test_dt$nam_1, 
+      data = test_sets$nam_1, 
       api_hostname = "bla.co.uk", 
       api_token = "XYZ", 
       cluster_id_col = "ABSENT_COLUMN"
@@ -101,7 +101,7 @@ test_that("Input validation works as expected", {
   # `lookback`
   expect_snapshot(
     rFunction(
-      data = test_dt$nam_1, 
+      data = test_sets$nam_1, 
       api_hostname = "bla.co.uk", 
       api_token = "XYZ", 
       cluster_id_col = "clust_id", 
@@ -117,6 +117,74 @@ test_that("Input validation works as expected", {
   # )
   
 })
+
+
+
+
+test_that("Fused clusters are signalled in output", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  dt <- test_sets$nam_1 |> 
+    filter(clust_id %in% c("NAM.3"))
+  
+  # define historic data and upload it to ER
+  hist <- dt |> 
+    mutate(
+      clust_id = case_when(
+        clust_id == "NAM.3" & row_number() <= 20 ~ "NAM.000",
+        clust_id == "NAM.3" & row_number() > 20 ~ "NAM.001",
+        is.na(clust_id) ~ NA
+      ),
+      cluster_uuid = sub("NAM.", "CLST_", clust_id),
+      cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
+      track_id = move2::mt_track_id(dt)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id)
+  
+  ra_post_obs(
+    data = hist,
+    tm_id_col = mt_time_column(hist),
+    additional_cols = c(store_cols, cluster_cols),
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  
+  # define current data and run rFunction
+  # set new data (containing the fusing event)
+  new <- mutate(dt, clust_id = "FUSION_CASE_1")
+  
+  output_dt <- rFunction(
+    data = new, 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(store_cols, collapse = ",")
+  )
+  
+  
+  # check if row with fused cluster exists and value is as expcted
+  expect_equal(
+    output_dt |> 
+      filter(track_id == "FUSED_CLUSTERS_TRACKER") |> 
+      pull(cluster_uuid) |> 
+      unique(),
+    "CLST_001"
+  )
+  
+  # output should have 1 more row that new data, which contains uuid of fused cluster
+  expect_true( nrow(output_dt) == nrow(new) + 2)
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc,
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID") 
+  )
+  
+})
+
+
 
 
 
@@ -196,7 +264,7 @@ test_that("get_hist() works as expected", {
 
 
 
-## fetch_unclustered()  -------------------------------------------------------------
+## fill_track_gaps()  -------------------------------------------------------------
 test_that("fill_track_gaps() works as expected", {
   
   store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
