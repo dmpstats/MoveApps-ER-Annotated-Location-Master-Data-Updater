@@ -2115,9 +2115,13 @@ fill_track_gaps <- function(clustered_dt,
         token = token, 
         min_date = query_from, 
         max_date = query_to, 
-        filter = 0, # non-clustered and CLOSED observations
+        filter = 0,
         subject_id = er_subject_id
       ) |> 
+        # next filter handles change in ER, where API's "filter = 0" ignores our
+        # "ACTIVE" exclusion flag (i.e. they're also retrieved). Code below
+        # explicitly keeps only non-clustered obs, so this is for extra safety
+        dplyr::filter(exclusion_flags == 0) |>
         dplyr::mutate(
           er_subject_name = er_subject_name, 
           er_subject_id = er_subject_id
