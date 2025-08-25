@@ -403,12 +403,11 @@ fetch_hist <- function(api_base_url,
   
   
   # get un-clustered and closed observations (tagged as non_excluded 0) from
-  # min_date to max_date
-  # Note: Change in ER to accommodate the map display of ACTIVE cluster, which
-  # are tagged with a "3rd party flag" to allow for filtering, means that filter = 0 
-  # now also returns obs in ACTIVE clusters. Therefore, an additional
-  # filtering step is required here on the fetched data to keep non-excluded 0s (i.e.
-  # non-clustered and closed clusters)
+  # min_date to max_date Note: Change in ER to accommodate the map display of
+  # ACTIVE cluster, which are tagged with a "3rd party flag" to allow for
+  # filtering, means that filter = 0 now also returns obs in ACTIVE clusters.
+  # Therefore, an additional filtering step is required here on the fetched data
+  # to keep only non-excluded 0s (i.e. non-clustered and closed clusters)
   obs_cluster_non_excluded <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
@@ -418,8 +417,11 @@ fetch_hist <- function(api_base_url,
     created_after = NULL,
     include_details = include_details,
     page_size = page_size
-  ) |> 
-    dplyr::filter(exclusion_flags == 0)
+  ) 
+  
+  if(nrow(obs_cluster_non_excluded) > 0){
+    obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, exclusion_flags == 0)
+  }
   
   
   
