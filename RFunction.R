@@ -1280,37 +1280,43 @@ match_sf_clusters <- function(hist_dt,
     "  |- Found %d matches, of which %d are double-matches.", nrow(matches), nrow(double_matches)
   ))
   
-  # Performing match ---------------------
+  # Performing observation-level match ---------------------
   
-  # Resolve matches down to observation level 
+  # Resolve matches down to observation level, done by master cluster
   matched_old_obs <- hist_dt |> 
     dplyr::left_join(direct_matches, by = c("XTEMPCLUSTER" = "master_cluster")) |> 
-    # Get the nearest ID for ALL clusters
-    dplyr::mutate(
-      nearest_new_cluster = new_centroids$XTEMPCLUSTER[sf::st_nearest_feature(geometry, new_centroids)]
-    ) |> 
-    # If the old cluster is in double_matches, reassociate the new cluster to nearest_new_cluster
-    dplyr::mutate(
-      new_cluster = ifelse(
-        XTEMPCLUSTER %in% double_matches$master_cluster,
-        nearest_new_cluster,
-        new_cluster
-      )
-    ) |> 
-    # If the old cluster is in nonmatches, we need to create a new temporary cluster ID
+    # group and split by master cluster, to ensure correct processing
     dplyr::group_by(XTEMPCLUSTER) |> 
-    
-    # If the old cluster is in nonmatches, assign a new cluster ID generated for the group
-    dplyr::mutate(
-      new_cluster = ifelse(
-        XTEMPCLUSTER %in% nonmatches,
-        paste0("UNMATCHED.", dplyr::cur_group_id()),
-        new_cluster
-      )
-    ) |>
-    dplyr::ungroup() |> 
-    
-    dplyr::select(-all_of("nearest_new_cluster")) 
+    dplyr::group_split() |> 
+    # handling double matches
+    purrr::modify(
+      # anonymous function ensures master cluster points are assigned to
+      # matched new clusters based on centroids proximity
+      function(x){
+        master_clst_id <- unique(x$XTEMPCLUSTER)
+        if(master_clst_id %in% double_matches$master_cluster){
+          #browser()
+          master_cntr <- filter(master_centroids, XTEMPCLUSTER == master_clst_id)
+          dbl_new_ids <- filter(double_matches, master_cluster == master_clst_id) |> dplyr::pull(new_cluster)
+          dbl_new_cntr <- filter(new_centroids, XTEMPCLUSTER %in% dbl_new_ids)
+          nearest_new_cntr <- dbl_new_cntr$XTEMPCLUSTER[sf::st_nearest_feature(x, dbl_new_cntr)] # variant where points of master are split between new clusters based on centroid proximity
+          # nearest_new_cntr <- dbl_new_cntr$XTEMPCLUSTER[sf::st_nearest_feature(master_cntr, dbl_new_cntr)] # variant where ALL points of master are allocated to single new cluster based on centroid proximity
+          x <- mutate(x, new_cluster = nearest_new_cntr)  
+        }
+        return(x)
+      }) |> 
+    # handling no matches
+    purrr::imodify(
+      function(x, idx){
+        hist_clust_id <- unique(x$XTEMPCLUSTER)
+        if(hist_clust_id %in% nonmatches){
+          x <- mutate(x, new_cluster = paste0("UNMATCHED.", idx))
+        }
+        return(x)
+      }) |>
+    dplyr::bind_rows() |>
+    dplyr::arrange(recorded_at)
+
   
   # Create a lookup table for matches to output
   final_matches <- matched_old_obs |> 
