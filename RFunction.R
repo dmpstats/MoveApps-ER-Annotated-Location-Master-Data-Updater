@@ -199,7 +199,10 @@ rFunction = function(data,
     active_days_thresh = active_days_thresh
   ) |> 
     # dropping row created above to deal with NULL `hist_dt`, identified as empty lat/lon
-    tidyr::drop_na(lat, lon) 
+    tidyr::drop_na(lat, lon)
+  
+  # extract UUIDs of clusters nullified due to fusion events
+  fused_cluster_uuids <- attr(merged_dt, "fused_cluster_uuid")
   
   # house-keeping
   rm(matched_dt)
@@ -280,7 +283,43 @@ rFunction = function(data,
       sf_column_name = sf_col
     )
   
+  
+  ## Add tracker for fused clusters ---------
+  ##
+  ## Append dummy rows for tracking UUIDs of fused clusters to use in downstream
+  ## cluster metrics app. This is to ensure fused clusters are accounted for, and
+  ## handled appropriately, further down in the pipeline - specifically, in ER's
+  ## cluster-based Event logic. Failure to address this would result in
+  ## duplication of clusters (and their points) in ER's Events dataset, as they
+  ## wouldn't get updated under the current logic. Here we force all fused
+  ## clusters to be located at (0,0) and send them back in time. NOTE: each
+  ## fused cluster requires a minimum of two rows of observations for metrics
+  ## derivations
+  if(not_null(fused_cluster_uuids)) {
+    
+    fused_dt <- out |>
+      as_tibble() |>
+      dplyr::slice_sample(n = length(fused_cluster_uuids) * 2) |> 
+      mutate(
+        track_id = "FUSED_CLUSTERS_TRACKER",
+        cluster_uuid = rep(fused_cluster_uuids, each = 2),
+        cluster_status = "CLOSED", #"FUSED",
+        {{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
+        dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("1900-01-01")),
+        dplyr::across(dplyr::matches("local_tz"), ~"UTC")
+      ) |>
+      move2::mt_as_move2(
+        time_column = tm_id_col,
+        track_id_column = "track_id",
+        track_attributes = dplyr::any_of(mv2_track_cols),
+        sf_column_name = sf_col
+      ) |>
+      sf::st_set_crs(dt_crs)
+    
+    out <- move2::mt_stack(out, fused_dt)
+  }
  
+  
   logger.info(glue::glue("{symbol$star} Finished update to master location data in ER."))
   out
   
