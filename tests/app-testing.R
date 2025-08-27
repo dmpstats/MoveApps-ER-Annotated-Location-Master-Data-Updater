@@ -89,7 +89,7 @@ window_outputs <- window_intervals |>
     cli::cli_rule()
     cli::cli_h1("Starting Iterative Run {step}/{nruns} @ {now()}")
     
-    start_run_tm <- now()
+    start_run <- now()
     
     out <- nam_1mth_thin |> 
       filter(between(timestamp, start, end)) |> 
@@ -101,9 +101,9 @@ window_outputs <- window_intervals |>
         days_thresh = 14
       )
     
-    end_run_tm <- now()
+    end_run <- now()
     
-    cli::cli_h2("Finished Run {step}/{nruns}. Runtime: {end_run_tm - start_run_tm}}")
+    cli::cli_h2("Finished Run {step}/{nruns}. Runtime: {round(difftime(end_run, start_run, units = 'mins'), 3)} mins")
     
     # update iterating counter
     step <<- step + 1
@@ -152,7 +152,7 @@ processed_clusters <- dt_master |>
 
 
 # Nearly full consistency between original and split-and-merged data. The
-# exception comprises 2 similar cases (out of 149) where the scheduled run
+# exception comprises 3 similar cases (out of 149) where the scheduled run
 # splits the original cluster into two separate clusters. Checks show deviation
 # is explained by the slightly different cluster-expiration logic applied in
 # the Clustering App - where the temporal cut-off is "less rigid".
@@ -187,29 +187,11 @@ full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |>
 
 # Clean ER -------------------------------------
 
-er_sources <- get_sources(
+deep_clean_obs(
   api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-  token = er_tokens$standrews.dev$brunoc
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
 )
-
-source_ids <- purrr::keep(er_sources, \(s) s$provider == "moveapps_ann_locs") |> 
-  purrr::map(~ data.frame(
-    source_id = .x$id, 
-    manufacturer_id = .x$manufacturer_id, 
-    provider = .x$provider
-  )) |> 
-  list_rbind() |> 
-  filter(
-    provider == "moveapps_ann_locs",
-    manufacturer_id %!in% c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
-  )
-                   
-  
-delete_sources(
-  source_ids$source_id[1:3], 
-  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
-  token = er_tokens$standrews.dev$brunoc
-)  
 
 
 
