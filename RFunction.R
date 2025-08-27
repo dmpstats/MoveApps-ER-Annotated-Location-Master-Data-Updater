@@ -202,7 +202,7 @@ rFunction = function(data,
     tidyr::drop_na(lat, lon)
   
   # extract UUIDs of clusters nullified due to fusion events
-  fused_cluster_uuids <- attr(merged_dt, "fused_cluster_uuid")
+  hollow_cluster_uuid <- attr(merged_dt, "hollow_cluster_uuid")
   
   # house-keeping
   rm(matched_dt)
@@ -284,25 +284,25 @@ rFunction = function(data,
     )
   
   
-  ## Add tracker for fused clusters ---------
+  ## Add tracker for hollowed clusters ---------
   ##
-  ## Append dummy rows for tracking UUIDs of fused clusters to use in downstream
-  ## cluster metrics app. This is to ensure fused clusters are accounted for, and
-  ## handled appropriately, further down in the pipeline - specifically, in ER's
-  ## cluster-based Event logic. Failure to address this would result in
-  ## duplication of clusters (and their points) in ER's Events dataset, as they
-  ## wouldn't get updated under the current logic. Here we force all fused
-  ## clusters to be located at (0,0) and send them back in time. NOTE: each
-  ## fused cluster requires a minimum of two rows of observations for metrics
-  ## derivations
-  if(not_null(fused_cluster_uuids)) {
+  ## Append dummy rows for tracking UUIDs of hollowed clusters to use in
+  ## downstream cluster metrics app. This is to ensure fused or collapsed
+  ## clusters are accounted for, and handled appropriately, further down in the
+  ## pipeline - specifically, in ER's cluster-based Event logic. Failure to
+  ## address this would result in duplication of clusters (and their points) in
+  ## ER's Events dataset, as they wouldn't get updated under the current logic.
+  ## Here we force all hollowed clusters to be located at (0,0) and send them
+  ## back in time. NOTE: each hollowed cluster requires a minimum of two rows of
+  ## observations for metrics derivations
+  if(not_null(hollow_cluster_uuid)) {
     
     fused_dt <- out |>
       as_tibble() |>
-      dplyr::slice_sample(n = length(fused_cluster_uuids) * 2) |> 
+      dplyr::slice_sample(n = length(hollow_cluster_uuid) * 2) |> 
       mutate(
-        track_id = "FUSED_CLUSTERS_TRACKER",
-        cluster_uuid = rep(fused_cluster_uuids, each = 2),
+        track_id = "HOLLOWED_CLUSTERS_TRACKER",
+        cluster_uuid = rep(hollow_cluster_uuid, each = 2),
         cluster_status = "CLOSED", #"FUSED",
         {{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
         dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("1900-01-01")),
@@ -1794,7 +1794,7 @@ merge_and_update <- function(matched_dt,
     ) |> 
     dplyr::ungroup()
   
-  # Handle fusion events ------------------------------
+  # Handle cluster fusion events ------------------------------
   
   # It's entirely possible that 2x old clusters match 1x new, which breaks 
   # the below left-join. We can handle this by retaining just one old ID.
@@ -1820,13 +1820,37 @@ merge_and_update <- function(matched_dt,
               # Solution: drop the row of 2nd old cluster => obs will take the cluster ID
               # of 1st old cluster (i.e. get TRANSFERRED)
               x <- dplyr::slice(x, 1)   
-            # } else if(all(x$`Match Type` %in% c("Partial", "Full"))  && nrow(x) == 2) {
-            #   # Case 2: 2 old [1 Full & 1 Partial] -> 1 new 
-            #   # Solution: drop row with "Full Match", which will force those obs
-            #   # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
-            #   browser()
-            #   x <- filter(x, x$`Match Type` == "Partial")
-            } else{
+            } else if(identical(x$`Match Type`, c("Partial", "Full")) || identical(x$`Match Type`, c("Full", "Partial"))) {
+              # Case 2: 2 old [1 Full & 1 Partial] -> 1 new
+              # Solution: drop row with "Full Match", which will force those obs
+              # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
+              #browser()
+              x <- filter(x, x$`Match Type` == "Full")
+            } else if (identical(x$`Match Type`, c("Partial", "Partial"))){
+              # Case 3: 2 old [2 Partials] -> 1 new
+              # Found case was not actually a fusion event, but a double exact
+              # match between two pairs of clusters. That appeared to be caused
+              # by a glitch in the clustering App, as it should all be one single
+              # cluster without changes between consecutive runs. 
+              # Solution: For the moment, we'll just keep the old cluster UUIDs,
+              # but this might need re-assessment
+              x <- filter(x, x$master_cluster == cluster_uuid)
+              
+              if(nrow(x) == 2){
+                # Case 3b: 2 old [2 Partials] -> 1 new, but previous solution
+                # didn't drop cluster Actual fusion event, where only part of an
+                # old cluster fuses with another cluster
+                #browser()
+                clust_to_keep <- match_tbl |> 
+                  dplyr::filter(master_cluster %in% x$master_cluster) |> 
+                  dplyr::group_by(master_cluster) |> 
+                  dplyr::summarise(n = n()) |> 
+                  dplyr::filter(n == 2) |> 
+                  dplyr::pull(master_cluster)
+                
+                x <- filter(x, x$master_cluster == clust_to_keep)
+              }
+            } else {
               logger.warn("Found a new edge case while attempting to fuse clusters - forcing a debug!")
               browser()
             }
@@ -1844,7 +1868,9 @@ merge_and_update <- function(matched_dt,
     temp_tbl <- match_tbl
   }
   
-
+  # store ID of fused clusters (i.e. those disappearing)
+  fused_cluster_uuids <- setdiff(fusion_events$master_cluster, temp_tbl$master_cluster)
+  
   # Ensure that there are no duplicate new clusters - if so, throw an error
   if (any(duplicated(temp_tbl$new_cluster))) {
     cli::cli_abort(c(
@@ -1881,7 +1907,7 @@ merge_and_update <- function(matched_dt,
 
   # Run Checks and log summaries  ------------------------------------------
   
-  # Nr. "ACTIVE" clusters in merged data
+  # clusters in merged data
   clusters_merge <- merged_dt |> 
     data.frame() |> 
     count(cluster_uuid, cluster_status) |> 
@@ -1890,7 +1916,7 @@ merge_and_update <- function(matched_dt,
       #cluster_status == "ACTIVE"
     )
   
-  ## Nr of "ACTIVE" clusters in historical data
+  ## clusters in historical data
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
     count(cluster_uuid, cluster_status) |>
@@ -1899,23 +1925,50 @@ merge_and_update <- function(matched_dt,
       #cluster_status == "ACTIVE"
     )
   
-  # account for "vanishing" clusters due to fusion
-  if(nrow(fusion_events) > 0){
-    cluster_reduction <- fusion_events |> 
-      group_by(fusion_id) |> 
-      summarise(cluster_reduction = dplyr::n() - 1) |> 
-      pull(cluster_reduction)  
-  }else{
-    cluster_reduction <- 0
+  
+  ## Check for cluster collapse events
+  #
+  # A small old cluster may not get a match with new clusters using the current
+  # centroid-based matching approach used in `match_sf_clusters()`. E.g., in a
+  # 3-point old cluster, 2 points get a match on a new cluster (i.e. get
+  # TRANSFERRED), while the remaining point is considered non-clustered in the newest data
+  dropped_hist_clust <- clusters_hist |> 
+    dplyr::filter(
+      # find clusters dropped betwen hist and merge
+      cluster_uuid %notin% clusters_merge$cluster_uuid,
+      # discount fused cases
+      cluster_uuid %notin% fused_cluster_uuids
+    ) |> 
+    dplyr::pull(cluster_uuid)
+  
+  collapsed_cluster_uuids <- character(0)
+  
+  if(length(dropped_hist_clust) > 0){
+    collapsed_events <- merged_dt |> 
+      as.data.frame() |> 
+      dplyr::filter(cluster_uuid_hist %in% dropped_hist_clust) |> 
+      dplyr::group_by(cluster_uuid_hist) |> 
+      dplyr::summarise(collapsed = all(cluster_merge_status %in% c("DROPPED", "TRANSFERRED")))
+    
+    if(!all(collapsed_events$collapsed)){
+      cli::cli_abort(c(
+        "Historic clusters dropped from merged data for unexpected reasons.",
+        i = "Historical data may have been inadvertently deleted during processing."
+      ))
+    }
+    
+    collapsed_cluster_uuids <- collapsed_events$cluster_uuid_hist
   }
   
+  ## Account for cluster reduction due to fusion and collapsing events
+  cluster_reduction <- length(fused_cluster_uuids) + length(collapsed_cluster_uuids)
   
-  # check number of clusters
-  if(nrow(clusters_merge) < (nrow(clusters_hist) - sum(cluster_reduction))){
+  ## Check number of clusters
+  if(nrow(clusters_merge) < (nrow(clusters_hist) - cluster_reduction)){
     cli::cli_abort(c(
-      "Unexpectedly low number of {.val ACTIVE} clusters in merged data.",
-      x = "Merged data contains fewer {.val ACTIVE} clusters than the historical dataset.",
-      i = "This suggests {.val ACTIVE} clusters in historical data may have been inadvertently dropped during processing."
+      "Unexpectedly low number of clusters in merged data.",
+      x = "Merged data contains fewer clusters than the historical dataset.",
+      i = "This suggests clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
   
@@ -1928,20 +1981,26 @@ merge_and_update <- function(matched_dt,
   
   ## merge summary
   merge_summ <- dplyr::full_join(clusters_hist, clusters_merge, by = "cluster_uuid") |> 
-    dplyr::mutate(diff = n.y - n.x)
-  
-  #if(sum(merge_summ$diff < 0, na.rm = TRUE) > 0) browser()
+    dplyr::mutate(
+      diff = n.y - n.x,
+      expanded = diff > 0,
+      shrunk = diff < 0,
+      unchanged = diff == 0,
+      new = is.na(n.x)
+    )
   
   logger.info(sprintf(
     "  |- Cluster-level merging summary:
-           * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d | Fused: %d
+           * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d | Fused: %d | Collapsed: %d
            * New Clusters: %d",
-    sum(merge_summ$diff > 0, na.rm = TRUE), 
-    sum(merge_summ$diff < 0, na.rm = TRUE),
-    sum(merge_summ$diff == 0, na.rm = TRUE),
-    sum(!is.na(merge_summ$n.x) & is.na(merge_summ$n.y) & is.na(merge_summ$cluster_status.y)),
-    sum(is.na(merge_summ$n.x))
-  ))
+    sum(merge_summ$expanded, na.rm = TRUE), 
+    sum(merge_summ$shrunk, na.rm = TRUE),
+    sum(merge_summ$unchanged, na.rm = TRUE),
+    length(fused_cluster_uuids),
+    length(collapsed_cluster_uuids),
+    sum(merge_summ$new)
+  )) 
+  
   
   ## Closing clusters: check and summary
   just_closed <- merged_dt$cluster_status == "CLOSED" & merged_dt$CLUSTERSTATUSCHANGED == TRUE
@@ -2027,10 +2086,11 @@ merge_and_update <- function(matched_dt,
     sum(is.na(merged_dt$request_type))
   ))
   
-  # Store UUIDs of melded clusters in fusion events  ------------------------
-  # ids stored as an attribute of the output data, for later reference
-  fused_cluster_uuid <- setdiff(fusion_events$cluster_uuid, temp_tbl$cluster_uuid)
-  attr(merged_dt, "fused_cluster_uuid") <- fused_cluster_uuid
+  # Store UUIDs of hollowed clusters in fusion and or collapse events  ------------------------
+  # IDs stored as an attribute of the output data, for later reference
+  attr(merged_dt, "hollow_cluster_uuid") <- c(fused_cluster_uuids, collapsed_cluster_uuids)
+  
+  
   
   # Tidy-up and output ----------------------------------------
   merged_dt <- merged_dt |> 
