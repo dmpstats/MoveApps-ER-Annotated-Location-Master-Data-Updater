@@ -86,7 +86,8 @@ delete_sources <- function(src_ids, api_base_url, token){
   
   res <- map_dbl(src_ids, function(sid){
     #browser()
-    api_endpnt <- file.path(api_base_url, "source", sid)#, "?async=true")
+    #api_endpnt <- file.path(api_base_url, "source", sid)#, "?async=true")
+    api_endpnt <- file.path(api_base_url, "source", sid, "?async")
     
     req <- request(api_endpnt) |>
       #req_url_query(async = TRUE) |>
