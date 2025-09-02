@@ -186,6 +186,120 @@ test_that("Fused clusters are signalled in output", {
 
 
 
+test_that("Inclusion of 'lat'/'lon' in `store_cols_str` is handled appropriately", {
+  
+  posting_dttm <- now()
+  
+  ## "lat" & "lon" included in `store_cols_str` ------
+  expect_no_error(
+    out <- rFunction(
+      data = test_sets$nam_2 |> slice(100:150), 
+      api_hostname = "standrews.dev.pamdas.org",
+      api_token = er_tokens$standrews.dev$brunoc, 
+      store_cols_str = paste(c("lat", "lon", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+    )
+  )
+  
+  ### lat-lon in output
+  expect_true(all(c("lat", "lon") %in% names(out)))
+  
+  ### fetch uploaded data
+  pushed_obs <- get_obs(
+    created_after = posting_dttm, 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  ### lat-lon in master data stored in EarthRanger
+  expect_true(all(c("lat", "lon") %in% names(pushed_obs)))
+  
+  # clean pushed obs
+  delete_obs(pushed_obs$id, er_tokens$standrews.dev$brunoc)
+  
+  
+  ## Differently named lat/lon cols are stored and returned ----
+  out <- rFunction(
+    data = test_sets$nam_2 |> slice(100:150) |> rename(latitude = lat, Longitude = lon), 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("latitude", "Longitude", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  ### "latitude" and "Longitude" in output
+  expect_true(all(c("latitude", "Longitude") %in% names(out)))
+  
+  ### fetch uploaded data
+  pushed_obs <- get_obs(
+    created_after = posting_dttm, 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  ### "lat" & "lon" in stored master data...
+  expect_true(all(c("lat", "lon") %in% names(pushed_obs)))
+  
+  ### .. as well as "latitude" and "Longitude" (duplicating the information)
+  expect_true(all(c("latitude", "Longitude") %in% names(pushed_obs)))
+  
+  # clean pushed obs
+  delete_obs(pushed_obs$id, er_tokens$standrews.dev$brunoc)
+  
+  
+  ## Non-selecting lat/lon cols leaves them out  ----
+  out <- rFunction(
+    data = test_sets$nam_2 |> slice(100:150), 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  ### "lat" & "lon" not in in output, despite being in input 
+  expect_true(!all(c("lat", "lon") %in% names(out)))
+  
+  ### fetch uploaded data
+  pushed_obs <- get_obs(
+    created_after = posting_dttm, 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  ### "lat" & "lon" always stored master data as point coords
+  expect_true(all(c("lat", "lon") %in% names(pushed_obs)))
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+})
+
+
+
+
+
+test_that("Absence of 'lat'/'lon' cols in input data handled as expected", {
+  
+  expect_no_error(
+    out <- rFunction(
+      data = test_sets$nam_2 |> slice(100:120) |> select(-c(lat, lon)), 
+      api_hostname = "standrews.dev.pamdas.org",
+      api_token = er_tokens$standrews.dev$brunoc, 
+      store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+    )
+  )
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+})
+
+
+
+
 
 
 test_that("dev testing", {

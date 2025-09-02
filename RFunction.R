@@ -103,8 +103,8 @@ rFunction = function(data,
   
   ## Location coordinates  ------
   ### Add lat/long columns to input data, if absent; otherwise, ensure they're 
-  ### named a "lat"/lon 
-  if(!any(grepl("^lat", names(data)))){
+  ### named a "lat"/"lon" 
+  if(!any(grepl("^[l|L]at", names(data)))){
     lon_lat <- if(sf::st_is_longlat(data)){
       sf::st_coordinates(data)
     } else {
@@ -115,10 +115,10 @@ rFunction = function(data,
     data$lon <- lon_lat[, 'X']
     data$lat <- lon_lat[, 'Y']
   } else{
-    # ugly way to rename lat/lon cols, as move2 objects loose track attributes
-    # when passed to dplyr::rename functions
-    names(data)[grep("^lat", names(data))] <- "lat"
-    names(data)[grep("^lon", names(data))] <- "lon"
+    # ensure we have cols named "lat"/"lon". Duplicates if other aliases are
+    # present in input data
+    data$lat <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]at"))
+    data$lon <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]on"))
   }
   
   ## Additional columns ---------
@@ -131,6 +131,7 @@ rFunction = function(data,
     store_cols_parsed <- unlist(strsplit(store_cols_str,",|;"))
     store_cols <- gsub("\\s+", "", store_cols_parsed)
   }
+  
   
   ### ensure listed store_cols are in data
   if (!is.null(store_cols)){
@@ -159,7 +160,7 @@ rFunction = function(data,
     api_base_url = api_base_url,
     token = api_token, 
     unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback), 
-    page_size = 500
+    page_size = 1000
   )
   
   
@@ -811,6 +812,9 @@ get_obs <- function(api_base_url,
           "Observation details length mismatch: {nrow(observation_details_out)} vs {nrow(obs)}"
         )
       }
+      
+      observation_details_out <- observation_details_out |> 
+        dplyr::select(-dplyr::any_of(c("lat", "lon")))
       
       # Bind observation_details_df back to the main data frame
       obs <- obs |>
