@@ -1,8 +1,7 @@
 # ra_post_obs() fails if key required columns are missing
 
     Code
-      ra_post_obs(data = slice(test_sets$nam_1, 1:5), tm_id_col = mt_time_column(test_sets$nam_1), api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", token = er_tokens$
-        standrews.dev$brunoc)
+      ra_post_obs(data = slice(test_sets$nam_1, 1:5), tm_id_col = mt_time_column(test_sets$nam_1), api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", token = er_tokens$standrews.dev$brunoc)
     Condition
       [1m[33mError[39m in `ra_post_obs()`:[22m
       [38;5;254m[33m![38;5;254m `data` is missing the following required columns: "cluster_status" and "tag_id".[39m
