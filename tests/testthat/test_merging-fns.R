@@ -950,7 +950,7 @@ test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new
   )
   
   # UUID of fused cluster
-  fused_cluster_uuid <- attr(out, "fused_cluster_uuid")
+  fused_cluster_uuid <- attr(out, "hollow_cluster_uuid")
   
   expect_true(fused_cluster_uuid == "CLST_001")
   
