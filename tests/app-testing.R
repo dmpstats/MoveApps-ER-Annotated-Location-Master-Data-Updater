@@ -56,7 +56,12 @@ testthat::test_file("tests/testthat/test_RFunction.R")
 
 set_interactive_app_testing()
 
-# set-up -----
+
+## >>>>>>>>>>>>>>>>>>>>>>>>>>
+## ----   Typical Run    ----
+## <<<<<<<<<<<<<<<<<<<<<<<<<<
+
+### Set-up -----
 
 store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
 
@@ -75,7 +80,7 @@ window_intervals <- tibble(
 ) |> 
   filter(end <= end_dttm + window_shift) 
 
-# Run ----------
+### Run ----------
 
 # initialize iteration counter
 step <- 1
@@ -114,8 +119,7 @@ window_outputs <- window_intervals |>
   })
 
 
-
-# checks -------------------
+### checks -------------------
 
 # download all data in ER
 dt_master <- get_obs(
@@ -182,10 +186,140 @@ full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |>
 #     clustexpiration = 14,
 #     path_to_app = apps_paths$clust
 #   ) 
+
+
+### Clean ER -------------------------------------
+
+deep_clean_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+)
+
+
+
+## >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+## ----   Run with long lasting cluster    ----
+## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+# selecting a bunch a long lasting clusters, together with typical spanning ones
+nam_3mths |> 
+  filter(clust_id %in% c("NAM.21", "NAM.143", "NAM.61", "NAM.58", "NAM.116")) |> 
+  group_by(clust_id) |> 
+  summarise(
+    start_dttm = min(timestamp),
+    end_dttm = max(timestamp),
+    span = difftime(end_dttm, start_dttm, units = "days")
+  )
+
+### Set-up -----
+
+nam_long_clusts <- nam_3mths |> 
+  filter(clust_id %in% c( "NAM.21", "NAM.143", "NAM.61", "NAM.58", NA))
+
+store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
+
+## schedule run parameters
+window_span <- days(25)
+window_shift <- days(2)
+start_dttm <- min(nam_long_clusts$timestamp)
+end_dttm <- max(nam_long_clusts$timestamp)
+
+window_intervals <- tibble(
+  start = seq(start_dttm, end_dttm, by = period_to_seconds(window_shift)),
+  end = start + window_span
+) |> 
+  filter(end <= end_dttm + window_shift) 
+
+
+
+### Run ----------
+
+# initialize iteration counter
+step <- 1
+nruns <- nrow(window_intervals)
+
+window_outputs <- window_intervals |> 
+  #slice(1:3) |> 
+  pmap(function(start, end){
+    #browser()
+    
+    cli::cli_rule()
+    cli::cli_h1("Starting Iterative Run {step}/{nruns} @ {now()}")
+    
+    start_run <- now()
+    
+    out <- nam_long_clusts |> 
+      filter(between(timestamp, start, end)) |> 
+      rFunction(
+        api_hostname = "standrews.dev.pamdas.org",
+        api_token = er_tokens$standrews.dev$brunoc, 
+        store_cols_str = paste(store_cols, collapse = ","), 
+        dist_thresh = 175,
+        days_thresh = 14
+      )
+    
+    end_run <- now()
+    
+    cli::cli_h2("Finished Run {step}/{nruns}. Runtime: {round(difftime(end_run, start_run, units = 'mins'), 3)} mins")
+    
+    # update iterating counter
+    step <<- step + 1
+    
+    Sys.sleep(2)
+    
+    out
+  })
+
+
+### checks -------------------
+
+# download all data in ER
+dt_master <- get_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc#, 
+  #created_after = run_start_dttm
+)
+
+
+# compare nrows
+nrow(dt_master) == nrow(nam_long_clusts)
+
+# compare cluster data
+orig_clusters <- nam_long_clusts |> 
+    filter(!is.na(clust_id)) |> 
+    data.frame() |> 
+    group_by(clust_id) |> 
+    summarise(
+      spawn = min(timestamp),
+      end = max(timestamp),
+      n = n()
+    )|> 
+    arrange(spawn)
   
+orig_clusters
+
+processed_clusters <- dt_master |> 
+  filter(!is.na(cluster_uuid)) |> 
+  group_by(cluster_uuid) |> 
+  mutate(recorded_at = ymd_hms(recorded_at)) |> 
+  summarise( 
+    spawn = min(recorded_at),
+    end = max(recorded_at),
+    n = n()
+  ) |> 
+  arrange(spawn) 
+
+processed_clusters
 
 
-# Clean ER -------------------------------------
+full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |> 
+  mutate(n_diff = n.x - n.y)
+
+
+
+### Clean ER -------------------------------------
 
 deep_clean_obs(
   api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
