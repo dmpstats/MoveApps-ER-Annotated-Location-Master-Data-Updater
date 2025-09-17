@@ -123,6 +123,13 @@ test_that("Input validation works as expected", {
 
 test_that("Fused clusters are signalled in output", {
   
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+  
   store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
   cluster_cols <- c("cluster_uuid", "cluster_status")
   
@@ -164,10 +171,10 @@ test_that("Fused clusters are signalled in output", {
   )
   
   
-  # check if row with fused cluster exists and value is as expcted
+  # check if row with fused cluster exists and value is as expected
   expect_equal(
     output_dt |> 
-      filter(track_id == "FUSED_CLUSTERS_TRACKER") |> 
+      filter(track_id == "DISPERSED_CLUSTERS_TRACKER") |> 
       pull(cluster_uuid) |> 
       unique(),
     "CLST_001"
