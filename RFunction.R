@@ -248,10 +248,26 @@ rFunction = function(data,
     dplyr::distinct(cluster_uuid, request_type) |> 
     dplyr::pull(cluster_uuid)
   
+  ### Handle cases with no updated or new clusters, defaulting to observations
+  ### from the latest cluster. Required to ensure a non-empty output and hence
+  ### avoid errors in downstream Apps (e.g. Cluster Metrics) and pipeline
+  ### disruptions
+  if(length(updated_clusters_uuid) == 0){
+    
+    updated_clusters_uuid <- merged_dt |> 
+      dplyr::filter(
+        !is.na(cluster_uuid), 
+        .data[[tm_id_col]] == max(.data[[tm_id_col]])
+      ) |> 
+      dplyr::slice(1) |> 
+      dplyr::pull(cluster_uuid)
+  }
+  
+  ### apply filter
   clustered_dt <- merged_dt |> 
     dplyr::filter(cluster_uuid %in% updated_clusters_uuid)
   
-  # house-keeping
+  ## house-keeping
   rm(merged_dt)
   
   ## re-fetch unclustered obs to fill up gaps in track-level data
