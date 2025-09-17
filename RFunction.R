@@ -255,11 +255,9 @@ rFunction = function(data,
   if(length(updated_clusters_uuid) == 0){
     
     updated_clusters_uuid <- merged_dt |> 
-      dplyr::filter(
-        !is.na(cluster_uuid), 
-        .data[[tm_id_col]] == max(.data[[tm_id_col]])
-      ) |> 
-      dplyr::slice(1) |> 
+      dplyr::filter(!is.na(cluster_uuid)) |> 
+      dplyr::filter(.data[[tm_id_col]] == max(.data[[tm_id_col]])) |> 
+      dplyr::distinct(cluster_uuid) |>
       dplyr::pull(cluster_uuid)
   }
   
