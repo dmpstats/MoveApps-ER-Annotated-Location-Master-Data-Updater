@@ -273,7 +273,7 @@ rFunction = function(data,
   ## re-fetch unclustered obs to fill up gaps in track-level data
   out <- fill_track_gaps(
     clustered_dt = clustered_dt,
-    tm_id_col = "timestamp",
+    tm_id_col = tm_id_col,
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
     token = api_token
   )
@@ -1954,7 +1954,7 @@ merge_and_update <- function(matched_dt,
   # TRANSFERRED), while the remaining point is considered non-clustered in the newest data
   dropped_hist_clust <- clusters_hist |> 
     dplyr::filter(
-      # find clusters dropped betwen hist and merge
+      # find clusters dropped between hist and merge
       cluster_uuid %notin% clusters_merge$cluster_uuid,
       # discount fused cases
       cluster_uuid %notin% fused_cluster_uuids
@@ -1991,7 +1991,6 @@ merge_and_update <- function(matched_dt,
       i = "This suggests clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
-  
   
   
   ## check obs merge status 
@@ -2181,7 +2180,6 @@ fill_track_gaps <- function(clustered_dt,
   
   ## Get and bind subject IDs, required for querying obs via GET
   subject_ids <- get_subject_ids(api_base_url, token)
-  #subject_ids <- get_subject_ids(query_subjects$individual_local_identifier, api_base_url, token)
   
   query_subjects <- dplyr::left_join(query_subjects, subject_ids, by = "er_subject_name")
   
