@@ -203,7 +203,7 @@ rFunction = function(data,
     tidyr::drop_na(lat, lon)
   
   # extract UUIDs of clusters nullified due to fusion events
-  hollow_cluster_uuid <- attr(merged_dt, "hollow_cluster_uuid")
+  dispersed_cluster_uuid <- attr(merged_dt, "dispersed_cluster_uuid")
   
   # house-keeping
   rm(matched_dt)
@@ -241,7 +241,7 @@ rFunction = function(data,
   ## Keep observations in new clusters and modified clusters.
   logger.info("  |- Dropping observations in unchanged clusters.")
   
-  ## Filter observations in new clusters and modified clusters.
+  ## Filter observations in new clusters and modified clusters ----
   updated_clusters_uuid <- merged_dt |> 
     dplyr::filter(!is.na(cluster_uuid)) |> 
     dplyr::filter(!is.na(request_type)) |> 
@@ -301,28 +301,28 @@ rFunction = function(data,
     )
   
   
-  ## Add tracker for hollowed clusters ---------
+  ## Add tracker for dispersed clusters ---------
   ##
-  ## Append dummy rows for tracking UUIDs of hollowed clusters to use in
+  ## Append dummy rows for tracking UUIDs of dispersed clusters to use in
   ## downstream cluster metrics app. This is to ensure fused or collapsed
   ## clusters are accounted for, and handled appropriately, further down in the
   ## pipeline - specifically, in ER's cluster-based Event logic. Failure to
   ## address this would result in duplication of clusters (and their points) in
   ## ER's Events dataset, as they wouldn't get updated under the current logic.
-  ## Here we force all hollowed clusters to be located at (0,0) and send them
-  ## back in time. NOTE: each hollowed cluster requires a minimum of two rows of
+  ## Here we force all dispersed clusters to be located at (0,0) and send them
+  ## back in time. NOTE: each dispersed cluster requires a minimum of two rows of
   ## observations for metrics derivations
-  if(not_null(hollow_cluster_uuid)) {
+  if(not_null(dispersed_cluster_uuid)) {
     
-    fused_dt <- out |>
+    dispersed_clusters_tracker <- out |>
       as_tibble() |>
-      dplyr::slice_sample(n = length(hollow_cluster_uuid) * 2) |> 
+      dplyr::slice_sample(n = length(dispersed_cluster_uuid) * 2) |> 
       mutate(
-        track_id = "HOLLOWED_CLUSTERS_TRACKER",
-        cluster_uuid = rep(hollow_cluster_uuid, each = 2),
-        cluster_status = "CLOSED", #"FUSED",
+        track_id = "DISPERSED_CLUSTERS_TRACKER",
+        cluster_uuid = rep(dispersed_cluster_uuid, each = 2),
+        cluster_status = "CLOSED", #"DISPERSED"
         {{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
-        dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("1900-01-01")),
+        dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("2000-01-01")),
         dplyr::across(dplyr::matches("local_tz"), ~"UTC")
       ) |>
       move2::mt_as_move2(
@@ -333,7 +333,7 @@ rFunction = function(data,
       ) |>
       sf::st_set_crs(dt_crs)
     
-    out <- move2::mt_stack(out, fused_dt)
+    out <- move2::mt_stack(out, dispersed_clusters_tracker)
   }
  
   
@@ -2108,7 +2108,7 @@ merge_and_update <- function(matched_dt,
   
   # Store UUIDs of hollowed clusters in fusion and or collapse events  ------------------------
   # IDs stored as an attribute of the output data, for later reference
-  attr(merged_dt, "hollow_cluster_uuid") <- c(fused_cluster_uuids, collapsed_cluster_uuids)
+  attr(merged_dt, "dispersed_cluster_uuid") <- c(fused_cluster_uuids, collapsed_cluster_uuids)
   
   
   
