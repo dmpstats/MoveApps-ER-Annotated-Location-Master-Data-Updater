@@ -272,7 +272,7 @@ rFunction = function(data,
   out <- fill_track_gaps(
     clustered_dt = clustered_dt,
     tm_id_col = tm_id_col,
-    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    api_base_url = api_base_url,
     token = api_token
   )
   
