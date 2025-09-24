@@ -33,7 +33,7 @@ active_flag <- bit64::as.integer64(1311673391471656960)
 #' OVERALL NOTES
 #' 
 #' Correspondence between ER == Move2 Attributes:
-#'    - "manufacturer_id" (defines a "source") == "tag_id" 
+#'    - "manufacturer_id" (defines a "source") == "{tag_id} - {deployment_id}" 
 #'    - "subject_name" == "individual_local_identifier"
 #'    - "recorded_at" == mt_time_column(data)
 
@@ -508,7 +508,7 @@ fetch_hist <- function(api_base_url,
       
       if(length(subject_dets$name) > 1){
         cli::cli_abort(c(
-          "Each `tag_id`/`manufacturer_id` must be uniquely associated with a single subject.",
+          "Each `manufacturer_id` must be uniquely associated with a single subject.",
           x = "Detected a one-to-many relationship between `manufacturer_id` and `subject_name`, which is not currently allowed."
         ))
       }
@@ -540,6 +540,7 @@ fetch_hist <- function(api_base_url,
     dplyr::mutate(
       er_obs_id = id,
       er_source_id = source,
+      er_manufacturer_id = manufacturer_id,
       #tag_id = manufacturer_id,
       #individual_local_identifier = subject_name,
       recorded_at = lubridate::as_datetime(recorded_at, tz = "UTC"), 
@@ -586,7 +587,7 @@ ra_post_obs <- function(data,
   }
   
   # input validation -------------------------------------------------------------------
-  req_cols <- c("cluster_status", "tag_id", "individual_local_identifier", "lat", "lon")
+  req_cols <- c("cluster_status", "tag_id", "deployment_id", "individual_local_identifier", "lat", "lon")
   miss_cols <- req_cols[req_cols %!in% names(data)]
   if (length(miss_cols) > 0) {
     cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
@@ -609,18 +610,19 @@ ra_post_obs <- function(data,
       dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format_iso8601(x)),
       # convert any columns of class integer64 to string
       dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
-      #drop units
+      # drop units
       dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
     ) |> 
     dplyr::mutate(
       recorded_at = .data[[tm_id_col]],
-      manufacturer_id = as.character(tag_id),
+      manufacturer_id = glue::glue("{tag_id}-{deployment_id}"),
       subject_name = as.character(individual_local_identifier),
       subject_type = "Wildlife",
       subject_subtype = "Unassigned", 
       #source_type = "tracking_device",
-      .keep = "unused"
-    )  |> 
+      .keep = "unused",
+      .after = dplyr::last_col()
+    ) |> 
     dplyr::mutate(
       exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(active_flag), as.integer64(0), missing = as.integer64(0))
     ) |> 
@@ -959,11 +961,11 @@ patch_obs <- function(data,
       dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
     )
   
-  # MUST remove cols "tag_id" & "individual_local_identifier" from
-  # additional_cols to avoid those attributes being disPATCHed to ER, which
-  # would lead to duplication issues. Remember, they should be treated as alias
-  # to, respectfully, "manufacturer_id" and "subject_name" in ER - i.e. avoid duplication
-  additional_cols <- additional_cols[additional_cols %!in% c("tag_id", "individual_local_identifier")]
+  # MUST remove col "individual_local_identifier" from additional_cols to avoid
+  # those attributes being disPATCHed to ER, which would lead to duplication
+  # issues. Remember, "individual_local_identifier" should be treated as an
+  # alias to "subject_name" in ER
+  additional_cols <- additional_cols[additional_cols %!in% c("individual_local_identifier")]
   
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
@@ -1083,7 +1085,6 @@ match_sf_clusters <- function(hist_dt,
   
   logger.info("Matching Spatial Clusters")
   
-  
   # If historical data is empty, skip everything and return standardized <cluster_matching_results> object
   if (is.null(hist_dt) || nrow(hist_dt) == 0) {
     
@@ -1095,7 +1096,7 @@ match_sf_clusters <- function(hist_dt,
     out <- structure(
       list(
         matched_hist_dt = dplyr::tibble(
-          cluster_uuid = character(0), cluster_status = character(0), subject_name = character(0), manufacturer_id = character(0),
+          cluster_uuid = character(0), cluster_status = character(0), subject_name = character(0), er_manufacturer_id = character(0),
           recorded_at = NA_POSIXct_, er_obs_id = character(0), er_source_id = character(0),
           {{cluster_id_col}} := character(0), lon = numeric(0), lat = numeric(0)
         ) |>
@@ -1658,7 +1659,7 @@ merge_and_update <- function(matched_dt,
   
   hist_req_cols <- c(
     cluster_id_col, "cluster_uuid", "cluster_status", "subject_name", 
-    "manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
+    "er_manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
   )
   hist_miss_cols <- hist_req_cols[hist_req_cols %!in% names(matched_hist_dt)]
   if (length(hist_miss_cols) > 0) {
@@ -1683,7 +1684,6 @@ merge_and_update <- function(matched_dt,
   matched_hist_dt <- matched_hist_dt |> 
     dplyr::rename(
       individual_local_identifier = subject_name,
-      tag_id = manufacturer_id,
       {{timestamp_col}} := recorded_at
     )
 
@@ -2245,14 +2245,14 @@ fill_track_gaps <- function(clustered_dt,
         dplyr::rename(
           er_source_id = source, 
           er_obs_id = id,
-          tag_id = manufacturer_id
+          er_manufacturer_id = manufacturer_id
         ) |> 
         dplyr::mutate(
           {{tm_id_col}} := lubridate::as_datetime(recorded_at, tz = "UTC"), 
         ) |> 
         # drop non-relevant  columns
         dplyr::select(-c(exclusion_flags, created_at, recorded_at)) |> 
-        # cast as sf and reproject to same CRS as clustered data
+        # cast as sf and re-project to same CRS as clustered data
         sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |> 
         sf::st_transform(sf::st_crs(clustered_dt))
       
@@ -2266,10 +2266,10 @@ fill_track_gaps <- function(clustered_dt,
   # Stack up and output  ----------------------------------
   
   if(nrow(obs_nonclust) > 0){
-    # sort and drop duplicates, currently keeping those in clustered data
-    dplyr::bind_rows(clustered_dt, obs_nonclust) |> 
-      dplyr::arrange(individual_local_identifier, tag_id, .data[[tm_id_col]]) |> 
-      dplyr::distinct(individual_local_identifier, tag_id, .data[[tm_id_col]], .keep_all = TRUE)
+    dplyr::bind_rows(clustered_dt, obs_nonclust) |>
+      dplyr::arrange(individual_local_identifier, tag_id, deployment_id, .data[[tm_id_col]]) |>
+      dplyr::distinct(individual_local_identifier, tag_id, deployment_id, .data[[tm_id_col]], .keep_all = TRUE)
+    
   } else {
     clustered_dt
   }
