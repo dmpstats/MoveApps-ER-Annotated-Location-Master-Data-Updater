@@ -1856,15 +1856,24 @@ merge_and_update <- function(matched_dt,
               
               if(nrow(x) == 2){
                 # Case 3b: 2 old [2 Partials] -> 1 new, but previous solution
-                # didn't drop cluster Actual fusion event, where only part of an
-                # old cluster fuses with another cluster
-                #browser()
+                # didn't drop cluster. Actual fusion event, where only part of an
+                # old cluster fuses with another cluster. 
+                # Solution: keep the old cluster, allowing the be transferred to
+                # the new cluster
                 clust_to_keep <- match_tbl |> 
                   dplyr::filter(master_cluster %in% x$master_cluster) |> 
                   dplyr::group_by(master_cluster) |> 
                   dplyr::summarise(n = n()) |> 
-                  dplyr::filter(n == 2) |> 
+                  # tease out old cluster that shows up in multiple matches
+                  dplyr::filter(n > 1) |> 
                   dplyr::pull(master_cluster)
+                
+                if(length(clust_to_keep) > 1){
+                  # More than one cluster at this point suggests 2 old clusters
+                  # reshuffle into 2 new clusters, i.e. parts of 2 old cluster
+                  # fuse into one new cluster (like a reshaping of 2 clusters).
+                  clust_to_keep <- clust_to_keep[1]
+                }
                 
                 x <- filter(x, x$master_cluster == clust_to_keep)
               }
