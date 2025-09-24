@@ -4,7 +4,7 @@
       ra_post_obs(data = slice(test_sets$nam_1, 1:5), tm_id_col = mt_time_column(test_sets$nam_1), api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", token = er_tokens$standrews.dev$brunoc)
     Condition
       [1m[33mError[39m in `ra_post_obs()`:[22m
-      [38;5;254m[33m![38;5;254m `data` is missing the following required columns: "cluster_status" and "tag_id".[39m
+      [38;5;254m[33m![38;5;254m `data` is missing the following required columns: "cluster_status", "tag_id", and "deployment_id".[39m
 
 # get_obs(): fails when and as expected
 
@@ -23,8 +23,8 @@
     Condition
       [1m[33mError[39m in `httr2::req_perform()`:[22m
       [33m![39m HTTP 401 Unauthorized.
-      • OAuth error: invalid_token - The access token is invalid.
-      • realm: api
+      • OAuth error
+      • : 
       • Failed to request observations historical data.
 
 ---

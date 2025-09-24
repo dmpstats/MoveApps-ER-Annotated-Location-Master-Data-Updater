@@ -330,17 +330,17 @@ test_that("merge_and_update() Case 1: 1 cluster updated & 1 cluster unchanged + 
   # prepare 
   hist <- test_sets$nam_1 |> 
     slice(1:50) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = glue("{tag_id}-{deployment_id}"),
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -403,17 +403,17 @@ test_that("merge_and_update() Case 2: 2 old clusters updated + 2 new clusters", 
   # prepare 
   hist <- test_sets$nam_1 |> 
     slice(1:50) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
       ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -468,17 +468,17 @@ test_that("merge_and_update() Case 3: 2 old clusters unchanged + 1 new clusters"
   # prepare
   hist <- test_sets$nam_1 |> 
     slice(1:50) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -536,17 +536,17 @@ test_that("merge_and_update() Case 4: obs get dropped/recruited from/to cluster"
   # prepare
   hist <- test_sets$nam_1 |> 
     slice(1:50) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::uuid(), .by = manufacturer_id)
+    mutate(er_source_id = ids::uuid(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -612,17 +612,17 @@ test_that("merge_and_update() Case 5: cluster splits into 2 clusters", {
   # prepare
   hist <- test_sets$nam_1 |> 
     slice(1:40) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -685,18 +685,18 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
   # prepare
   hist <- test_sets$nam_1 |> 
     slice(1:40) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -794,18 +794,18 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
   # case 4: a new observation is added to an already closed cluster
   hist <- test_sets$nam_1 |> 
     slice(1:40) |>
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "CLOSED", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -852,18 +852,17 @@ test_that("merge_and_update() changes in store cols are detected an patched", {
   
   # prepare
   hist <- test_sets$nam_1 |> 
-    slice(1:30) |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       cluster_uuid = sub("NAM.", "CLST_", clust_id), 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -915,7 +914,7 @@ test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new
   
   # force a split on one cluster, for historical
   hist <- dt |> 
-    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    mt_as_event_attribute(tag_id, individual_local_identifier, individual_id, deployment_id) |> 
     mutate(
       clust_id = case_when(
         clust_id == "NAM.3" & row_number() <= 20 ~ "NAM.000",
@@ -924,12 +923,12 @@ test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
-      manufacturer_id = tag_id,
+      er_manufacturer_id = tag_id,
       subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
-    mutate(er_source_id = ids::sentence(), .by = manufacturer_id)
+    mutate(er_source_id = ids::sentence(), .by = er_manufacturer_id)
   
   # convert hist to `<sf>` 
   class(hist) <- class(hist) %>% setdiff("move2")
@@ -950,7 +949,7 @@ test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new
   )
   
   # UUID of fused cluster
-  fused_cluster_uuid <- attr(out, "hollow_cluster_uuid")
+  fused_cluster_uuid <- attr(out, "dispersed_cluster_uuid")
   
   expect_true(fused_cluster_uuid == "CLST_001")
   

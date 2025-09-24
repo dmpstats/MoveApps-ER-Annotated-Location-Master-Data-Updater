@@ -148,7 +148,7 @@ test_that("Fused clusters are signalled in output", {
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       track_id = move2::mt_track_id(dt)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id)
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id)
   
   ra_post_obs(
     data = hist,
@@ -340,7 +340,7 @@ test_that("get_hist() works as expected", {
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       track_id = move2::mt_track_id(test_sets$nam_1)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice(1:50)
   
   posting_dttm <- now()

@@ -112,7 +112,7 @@ test_that("Data posted and retrieved as expected: basic case", {
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       track_id = move2::mt_track_id(test_sets$nam_1)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice(1:5)
   
   posting_dttm <- now() - seconds(5)
@@ -171,7 +171,7 @@ test_that("Data posted and retrieved as expected: handling of obs in ACTIVE clus
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       track_id = .data[[move2::mt_track_id_column(test_sets$nam_1)]]
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice_sample(n = 5, by = clust_id) |> 
     arrange(individual_local_identifier, timestamp)
   
@@ -251,7 +251,7 @@ test_that("Data posted and retrieved as expected: fetch obs by subject ID", {
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       track_id = move2::mt_track_id(test_sets$nam_1)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice(1:100)
   
   posting_dttm <- now()
@@ -316,7 +316,7 @@ test_that("Data patched as expected", {
       cluster_uuid = NA_character_,
       track_id = move2::mt_track_id(test_sets$nam_1)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice(1:20)
   
   # store posting date-time for later reference for GET requests based on "created_after"
@@ -445,7 +445,7 @@ test_that("ra_post_obs() dev testing", {
       cluster_uuid = sub("NAM.", "CLST_", clust_id),
       track_id = move2::mt_track_id(test_sets$nam_1)
     ) |> 
-    move2::mt_as_event_attribute(tag_id, individual_local_identifier, individual_id) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     as.data.frame() |> 
     slice(1:50)
   
