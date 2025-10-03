@@ -250,7 +250,6 @@ attributes(merged_dt)
 #         Case 3b: 2 old [2 Partials] -> 1 new
 # ------------------------------------------------------------ #
 
-
 dt_case3b <- readRDS("dev/cluster hollowing handling/fusion_dt_5.rds")
 
 matched_dt <- match_sf_clusters(
@@ -320,3 +319,104 @@ merged_dt <- merge_and_update(
   store_cols = store_cols,
   active_days_thresh = 15
 )
+
+
+
+# # ------------------------------------------------------------ #
+# #         Case 4: 3 old [3 Partials] -> 1 new
+# # ------------------------------------------------------------ #
+ 
+dt_case4 <- readRDS("dev/cluster hollowing handling/fusion_dt_6.rds")
+
+
+store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
+
+ 
+matched_dt <- match_sf_clusters(
+  hist_dt = dt_case4$hist_dt |> filter(cluster_uuid %in% c("improvedQuasidifficultRegainableGhostshrimp-20250927-200712", "nonobjectiveFrugalEthnomusicologicalNightingale-20250927-202254", "lamproiteSuperstrictCivillawTarpan-20250927-200712")),
+  new_dt = dt_case4$new_dt |> filter(clust_id %in% c("KEN_ZAM.64", "KEN_ZAM.102", "KEN_ZAM.164")),
+  cluster_id_col = "clust_id",
+  timestamp_col = "timestamp",
+  days_thresh = 14,
+  dist_thresh = units::set_units(150, "m"),
+  match_criteria = "gmedian"
+)
+
+fusion <- matched_dt$match_tbl |>
+  dplyr::group_by(new_cluster) |>
+  dplyr::filter(n() > 1)
+
+
+merged_dt <- merge_and_update(
+  matched_dt = matched_dt,
+  new_dt = dt_case4$new_dt,
+  cluster_id_col = "clust_id",
+  timestamp_col = "timestamp",
+  store_cols = store_cols,
+  active_days_thresh = 14
+)
+
+
+
+matched_dt$match_tbl |> 
+  filter(master_cluster == "improvedQuasidifficultRegainableGhostshrimp-20250927-200712")
+
+
+matched_dt$match_tbl |> 
+  filter(master_cluster == "nonobjectiveFrugalEthnomusicologicalNightingale-20250927-202254")
+
+
+matched_dt$match_tbl |> 
+  filter(master_cluster == "lamproiteSuperstrictCivillawTarpan-20250927-200712")
+
+
+hist_clusts <- matched_dt$matched_hist_dt |>
+  filter(cluster_uuid %in% fusion$master_cluster)
+
+
+hist_clusts_centroids <- hist_clusts |>
+  group_by(cluster_uuid) |>
+  summarise(geometry = calcGMedianSF(geometry))
+
+
+curr_clusts <- dt_case4$new_dt |>
+  filter(clust_id %in% c("KEN_ZAM.64", "KEN_ZAM.102", "KEN_ZAM.164"))
+
+curr_clusts_centroids <- curr_clusts |>
+  group_by(clust_id) |>
+  summarise(geometry = calcGMedianSF(geometry))
+
+
+
+# compare cluster points
+p_hist <- hist_clusts |>
+  ggplot() +
+  theme(legend.position = "top") +
+  geom_sf(aes(colour = cluster_uuid), alpha = 0.6)
+
+
+p_curr <- curr_clusts |>
+  ggplot() +
+  theme(legend.position = "top") +
+  geom_sf(aes(colour = clust_id), alpha = 0.6)
+
+p_hist/p_curr
+
+
+
+
+
+
+hist_clusts |>
+  ggplot() +
+  theme(legend.position = "top") +
+  geom_sf(aes(colour = cluster_uuid), alpha = 0.6) +
+  geom_sf(aes(colour = cluster_uuid), data = hist_clusts_centroids, shape = 3) +
+  geom_sf(
+    aes(colour = clust_id),
+    data = sf::st_buffer(curr_clusts_centroids,  units::set_units(150, "m")),
+    fill = NA
+  ) + 
+  scale_color_brewer(palette = "Set1")
+
+
