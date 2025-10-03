@@ -1893,8 +1893,10 @@ merge_and_update <- function(matched_dt,
                 x <- filter(x, x$master_cluster == clust_to_keep)
               }
             } else {
-              logger.warn("Found a new edge case while attempting to fuse clusters - forcing a debug!")
-              browser()
+              #browser()
+              x <- filter(x, x$master_cluster == cluster_uuid)
+              if(nrow(x) > 1) x <- dplyr::filter(x, n_pnts == max(n_pnts))
+              if(nrow(x) > 1) x <- dplyr::slice(x, 1)
             }
           }
           return(x)
