@@ -319,7 +319,8 @@ rFunction = function(data,
         track_id = "DISPERSED_CLUSTERS_TRACKER",
         cluster_uuid = rep(dispersed_cluster_uuid, each = 2),
         cluster_status = "CLOSED", #"DISPERSED"
-        {{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
+        #{{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
+        {{sf_col}} := sf::st_transform(sf::st_sfc(sf::st_point(c(0,90)), crs = 3681), dt_crs),
         dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("2000-01-01")),
         dplyr::across(dplyr::matches("local_tz"), ~"UTC")
       ) |>
