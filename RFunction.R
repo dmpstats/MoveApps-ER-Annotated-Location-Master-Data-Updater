@@ -1799,19 +1799,33 @@ merge_and_update <- function(matched_dt,
   ## New UUIDs issued based on match table, with data grouped by hist cluster
   ## IDs (here provided in col `master_cluster`, as a legacy of
   ## `match_sf_clusters()`)
+  
+  # get distribution of points in hist cluster across the matched new clusters,
+  # relevant in multipke matches
+  matched_pnt_dist <- matched_hist_dt |>
+    as.data.frame() |>
+    dplyr::filter(!is.na(cluster_uuid)) |>
+    dplyr::group_by(cluster_uuid) |>
+    dplyr::count(.data[[cluster_id_col]], name = "n_pnts")
+  
+  # handle UUIDs
   match_tbl <- match_tbl |> 
+    # merge and sort matches by nr of points
+    dplyr::left_join(matched_pnt_dist, by = c("new_cluster" = cluster_id_col, "master_cluster" = "cluster_uuid")) |> 
     dplyr::group_by(master_cluster) |> 
+    dplyr::arrange(desc(n_pnts), .by_group = TRUE) |> 
     dplyr::mutate(
       cluster_uuid = dplyr::case_when(
-        # if present, an existent UUID is always retained
+        # if present, the hist UUID is retained for the first match (i.e. that with most matched points)
         dplyr::row_number() == 1 & !is.na(master_cluster) ~ dplyr::first(master_cluster, na_rm = TRUE),
-        # next, dealing with duplicates, generated from 2:1 matches
-        dplyr::row_number() > 1 & !is.na(master_cluster) ~ generate_uuid(),
-        # issuing new UUIDs for new clusters
+        # next, dealing with 1:many matches
+        dplyr::row_number() > 1 & !is.na(master_cluster) ~ generate_uuid(dplyr::n()),
+        # issuing new UUIDs for new clusters (i.e. no matches)
         is.na(master_cluster) ~ generate_uuid(dplyr::n())
       )
     ) |> 
     dplyr::ungroup()
+  
   
   # Handle cluster fusion events ------------------------------
   
