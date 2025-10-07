@@ -2207,22 +2207,27 @@ fill_track_gaps <- function(clustered_dt,
   
   query_subjects <- dplyr::left_join(query_subjects, subject_ids, by = "er_subject_name")
   
-  ## Perform Obs GET request
+  ## Perform Obs GET request, iteratively over subjects
   obs_nonexcl <- purrr::pmap(
     query_subjects,
     function(query_from, query_to, er_subject_id, er_subject_name){
       #browser()
-      get_obs(
+      sbj_obs <- get_obs(
         api_base_url = api_base_url, 
         token = token, 
         min_date = query_from, 
         max_date = query_to, 
-        filter = 0,
+        filter = 0, 
+        page_size = 500,
         subject_id = er_subject_id
-      ) |> 
-        # next filter handles change in ER, where API's "filter = 0" ignores our
-        # "ACTIVE" exclusion flag (i.e. they're also retrieved). Code below
-        # explicitly keeps only non-clustered obs, so this is for extra safety
+      )
+      
+      if(nrow(sbj_obs) == 0) return(NULL) 
+      
+      # next filter handles change in ER, where API's "filter = 0" ignores our
+      # "ACTIVE" exclusion flag (i.e. they're also retrieved). Code below
+      # explicitly keeps only non-clustered obs, so this is for extra safety
+      sbj_obs |> 
         dplyr::filter(exclusion_flags == 0) |>
         dplyr::mutate(
           er_subject_name = er_subject_name, 
