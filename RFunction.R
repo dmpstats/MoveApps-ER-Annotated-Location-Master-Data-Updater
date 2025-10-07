@@ -16,7 +16,7 @@ library(ids)
 # library(ggplot2)
 
 # wee helpers
-`%!in%` <- Negate(`%in%`)
+`%notin%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
 
 
@@ -135,7 +135,7 @@ rFunction = function(data,
   
   ### ensure listed store_cols are in data
   if (!is.null(store_cols)){
-    missing_store_cols <- store_cols %!in% names(data)
+    missing_store_cols <- store_cols %notin% names(data)
     if(sum(missing_store_cols) > 0){
       cli::cli_abort(c(
         "Attribute{?s} {.val {store_cols[missing_store_cols]}} not found in the input data.",
@@ -150,7 +150,7 @@ rFunction = function(data,
     api_hostname <- httr2::url_parse(api_hostname)$hostname
   }
   
-  api_base_url <- paste0("https://", api_hostname, "/api/v1.0/")
+  api_base_url <- paste0("https://", api_hostname, "/api/v1.0")
   
   
   # Fetch Historical Data --------------------------------------- 
@@ -365,7 +365,7 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
       "Parameter '{app_par_name}' ({.arg {arg}}) must be a string.",
       call = call)
     
-  } else if (id_col %!in% dt_cols) {
+  } else if (id_col %notin% dt_cols) {
     logger.fatal(paste0(
       "Input data does not have column '", id_col, "'. Please provide a ",
       "valid column name with cluster ID annotations."
@@ -589,7 +589,7 @@ ra_post_obs <- function(data,
   
   # input validation -------------------------------------------------------------------
   req_cols <- c("cluster_status", "tag_id", "deployment_id", "individual_local_identifier", "lat", "lon")
-  miss_cols <- req_cols[req_cols %!in% names(data)]
+  miss_cols <- req_cols[req_cols %notin% names(data)]
   if (length(miss_cols) > 0) {
     cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
   }
@@ -938,12 +938,12 @@ patch_obs <- function(data,
     return(invisible())
   }
   
-  # if ("er_obs_id" %!in% names(data)) {
+  # if ("er_obs_id" %notin% names(data)) {
   #   cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
   # }
   
   req_cols <- c(additional_cols, "er_obs_id", "cluster_status", "lat", "lon")
-  miss_cols <- req_cols[req_cols %!in% names(data)]
+  miss_cols <- req_cols[req_cols %notin% names(data)]
   if (length(miss_cols) > 0) {
     cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
   }
@@ -966,7 +966,7 @@ patch_obs <- function(data,
   # those attributes being disPATCHed to ER, which would lead to duplication
   # issues. Remember, "individual_local_identifier" should be treated as an
   # alias to "subject_name" in ER
-  additional_cols <- additional_cols[additional_cols %!in% c("individual_local_identifier")]
+  additional_cols <- additional_cols[additional_cols %notin% c("individual_local_identifier")]
   
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
@@ -1148,12 +1148,12 @@ match_sf_clusters <- function(hist_dt,
   }
   
   
-  if ("cluster_uuid" %!in% names(hist_dt)) {
+  if ("cluster_uuid" %notin% names(hist_dt)) {
     cli::cli_abort("Column {.val cluster_uuid} must be present in {.arg hist_dt}.")
   }
   
   # Check that column "recorded_at" exists in historic data and it's of class POSIXt
-  if ("recorded_at" %!in% names(hist_dt)) {
+  if ("recorded_at" %notin% names(hist_dt)) {
     cli::cli_abort("Column {.val recorded_at} must be present in {.arg hist_dt}.")
   }else{
     if(!inherits(hist_dt[["recorded_at"]], "POSIXt")){
@@ -1653,7 +1653,6 @@ merge_and_update <- function(matched_dt,
   
   ## Check that required columns are present
   new_req_cols <- c(cluster_id_col, timestamp_col, "lon", "lat")
-  new_miss_cols <- new_req_cols[new_req_cols %!in% names(new_dt)]
   if (length(new_miss_cols) > 0) {
     cli::cli_abort("{.arg new_dt} is missing the following required columns: {.val {new_miss_cols}}.")
   }
@@ -1662,7 +1661,7 @@ merge_and_update <- function(matched_dt,
     cluster_id_col, "cluster_uuid", "cluster_status", "subject_name", 
     "er_manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
   )
-  hist_miss_cols <- hist_req_cols[hist_req_cols %!in% names(matched_hist_dt)]
+  hist_miss_cols <- hist_req_cols[hist_req_cols %notin% names(matched_hist_dt)]
   if (length(hist_miss_cols) > 0) {
     cli::cli_abort("{.arg matched_hist_dt} is missing the following required columns: {.val {hist_miss_cols}}.")
   }
@@ -1801,7 +1800,7 @@ merge_and_update <- function(matched_dt,
   ## `match_sf_clusters()`)
   
   # get distribution of points in hist cluster across the matched new clusters,
-  # relevant in multipke matches
+  # relevant in 1:many
   matched_pnt_dist <- matched_hist_dt |>
     as.data.frame() |>
     dplyr::filter(!is.na(cluster_uuid)) |>
@@ -2169,7 +2168,7 @@ fill_track_gaps <- function(clustered_dt,
   
   # Input validation -------------------
   req_cols <- c("request_type", "cluster_uuid", "track_id", "individual_local_identifier")
-  miss_cols <- req_cols[req_cols %!in% names(clustered_dt)]
+  miss_cols <- req_cols[req_cols %notin% names(clustered_dt)]
   if (length(miss_cols) > 0) {
     cli::cli_abort("{.arg clustered_dt} is missing the following required columns: {.val {miss_cols}}.")
   }
