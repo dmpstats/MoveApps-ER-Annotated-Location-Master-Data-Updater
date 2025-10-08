@@ -1653,6 +1653,7 @@ merge_and_update <- function(matched_dt,
   
   ## Check that required columns are present
   new_req_cols <- c(cluster_id_col, timestamp_col, "lon", "lat")
+  new_miss_cols <- new_req_cols[new_req_cols %notin% names(new_dt)]
   if (length(new_miss_cols) > 0) {
     cli::cli_abort("{.arg new_dt} is missing the following required columns: {.val {new_miss_cols}}.")
   }
