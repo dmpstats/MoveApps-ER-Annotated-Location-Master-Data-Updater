@@ -480,3 +480,68 @@ test_that("get_source_details() dev testing", {
   
 })
 
+
+test_that("patch_obs() dev testing", {
+  
+  skip()
+  
+  # PATCHing retried if API returns 502 error, currently occurring when number
+  # of sqeuential requests is very high
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  dt <- nam_lrg |> 
+    mutate(
+      cluster_status = NA_character_,
+      cluster_uuid = NA_character_,
+      track_id = move2::mt_track_id(nam_lrg)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) 
+  
+  # post data
+  ra_post_obs(
+    data = dt,
+    tm_id_col = mt_time_column(dt),
+    additional_cols = c(store_cols, cluster_cols),
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc#,
+  )
+  
+  # get data
+  dt_retrieved <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  ) |> 
+    select(id, recorded_at, lat, lon) |> 
+    mutate(
+      er_obs_id = id,
+      timestamp = ymd_hms(recorded_at), 
+      .keep = "unused"
+    )
+  
+  # combine data, to link observation IDS
+  dt <- left_join(dt, dt_retrieved, by = c("timestamp", "lat", "lon"))
+  
+  ## add a mock column  -----------------
+  obs_changed <- dt |> 
+    mutate(mock_column = rnorm(n()),  cluster_uuid = "THIS_IS_A_CLUSTER_UUID")
+  
+  patch_obs(
+    obs_changed |> slice(900:1001), 
+    additional_cols = c(store_cols, cluster_cols, "mock_column"),
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+  
+})
+
+
