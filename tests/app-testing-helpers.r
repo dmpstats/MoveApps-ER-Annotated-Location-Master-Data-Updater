@@ -105,7 +105,7 @@ delete_sources <- function(src_ids, api_base_url, token){
         is_transient = \(resp) resp_status(resp) %in% c(429, 503, 504),
         backoff = \(resp) 10
       ) |>
-      req_perform(req) |> 
+      req_perform() |> 
       httr2::resp_status()
     
   }, .progress = TRUE)
