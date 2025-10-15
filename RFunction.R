@@ -996,6 +996,13 @@ patch_obs <- function(data,
         
         req |> 
           httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |> 
+          # apply retry, adding 502 "Bad Gateway" as a transient error (429 and
+          # 503 are standard transients); 30s backoff period
+          httr2::req_retry(
+            max_tries = 5,
+            is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503),
+            backoff = \(resp) 30
+          ) |>
           httr2::req_perform() |> 
           httr2::resp_status()
         
