@@ -99,8 +99,14 @@ delete_sources <- function(src_ids, api_base_url, token){
       )
     #req_dry_run(req)
     
-    req_perform(req) |> httr2::resp_status()
-    #req_perform_promise(req) %...>% httr2::resp_status()
+    req |> 
+      httr2::req_retry(
+        max_tries = 5,
+        is_transient = \(resp) resp_status(resp) %in% c(429, 503, 504),
+        backoff = \(resp) 10
+      ) |>
+      req_perform(req) |> 
+      httr2::resp_status()
     
   }, .progress = TRUE)
   
