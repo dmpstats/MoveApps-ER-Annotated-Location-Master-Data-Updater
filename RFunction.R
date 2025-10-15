@@ -1954,20 +1954,14 @@ merge_and_update <- function(matched_dt,
   # clusters in merged data
   clusters_merge <- merged_dt |> 
     data.frame() |> 
-    count(cluster_uuid, cluster_status) |> 
-    dplyr::filter(
-      !is.na(cluster_uuid),
-      #cluster_status == "ACTIVE"
-    )
+    count(cluster_uuid) |> 
+    dplyr::filter(!is.na(cluster_uuid))
   
   ## clusters in historical data
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
-    count(cluster_uuid, cluster_status) |>
-    dplyr::filter(
-      !is.na(cluster_uuid),
-      #cluster_status == "ACTIVE"
-    )
+    count(cluster_uuid) |> 
+    dplyr::filter(!is.na(cluster_uuid))
   
   
   ## Check for cluster collapse events
