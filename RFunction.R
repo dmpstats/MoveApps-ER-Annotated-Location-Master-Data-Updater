@@ -1000,7 +1000,7 @@ patch_obs <- function(data,
           # 503 are standard transients); 30s backoff period
           httr2::req_retry(
             max_tries = 5,
-            is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503),
+            is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
             backoff = \(resp) 30
           ) |>
           httr2::req_perform() |> 
