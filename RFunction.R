@@ -2323,7 +2323,8 @@ coerce_col_types <- function(data, ref_data){
   mutual_cols <- intersect(names(data), names(ref_data))
   
   mutual_cols_prof <- purrr::map(mutual_cols, function(col){
-    x <- ref_data[[col]]
+    ref_vct <- ref_data[[col]]
+    trg_vct <- data[[col]]
     data.frame(
       col_name = col,
       ref_cls = class(ref_vct)[[1]], # top-level class in reference dataset
