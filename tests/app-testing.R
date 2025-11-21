@@ -57,6 +57,14 @@ testthat::test_file("tests/testthat/test_RFunction.R")
 set_interactive_app_testing()
 
 
+deep_clean_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+)
+
+
+
 ## >>>>>>>>>>>>>>>>>>>>>>>>>>
 ## ----   Typical Run    ----
 ## <<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -199,9 +207,8 @@ deep_clean_obs(
 
 
 ## >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-## ----   Run with long lasting cluster    ----
+## ----   Run with long lasting clusters    ----
 ## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
 
 # selecting a bunch a long lasting clusters, together with typical spanning ones
 nam_3mths |> 
