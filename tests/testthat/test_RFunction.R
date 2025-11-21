@@ -507,7 +507,46 @@ test_that("fill_track_gaps() works as expected", {
 
 
 
+# is_masked_bool() --------------
+
+test_that("is_masked_bool(): TRUE when all non-NA character elements are whole-word 'true' or 'false' (any case)", {
+  expect_true(is_masked_bool(c("true", "FALSE")))
+  # NA ignored, remaining matches -> TRUE
+  expect_true(is_masked_bool(c("TRUE", "True", NA_character_)))
+  expect_true(is_masked_bool(c("false", "true", "FALSE")))
+  expect_true(is_masked_bool(c("False", "true", "")))
+})
 
 
+test_that("is_masked_bool(): FALSE when any non-NA element is not a whole-word match", {
+  expect_false(is_masked_bool(c("true", "no")))
+  # substring is not a whole-word, so first element fails
+  expect_false(is_masked_bool(c("someFalseValue", "false")))  
+  expect_false(is_masked_bool(c("nottruehere", "falsehood")))
+  # empty strings
+  expect_false(is_masked_bool(c("", "")))
+  expect_false(is_masked_bool(c(NA_character_, "")))
+})
 
 
+test_that("is_masked_bool(): FALSE for non-character inputs", {
+  # logical
+  expect_false(is_masked_bool(c(TRUE, FALSE)))
+  # factor
+  expect_false(is_masked_bool(factor("true")))
+  # numeric
+  expect_false(is_masked_bool(c(1, 0)))
+})
+
+
+test_that("is_masked_bool(): FALSE for empty or all-NA character vectors", {
+  # empty character
+  expect_false(is_masked_bool(character(0)))
+  # all NAs
+  expect_false(is_masked_bool(c(NA_character_, NA_character_)))
+})
+
+
+test_that("is_masked_bool(): FALSE for mixed NA and non-matching values", {
+  expect_false(is_masked_bool(c(NA_character_, "no", NA_character_))) # non-matching present -> FALSE
+})
