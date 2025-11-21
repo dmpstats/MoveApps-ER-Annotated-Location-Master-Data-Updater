@@ -51,6 +51,11 @@ rFunction = function(data,
                      ) {
   
   # TODO's
+  #
+  # - re-assess the relevance of `lookback` and `active_days_thresh` as App inputs.
+  # Perhaps they can be hardwired to fixed values? Need to think carefully on
+  # repercurssions of such changes.
+  #
   # - generalize function to allow simple updating and storage of data in ER 
   #   (i.e. without cluster tracking and merging)?
   #
@@ -161,7 +166,7 @@ rFunction = function(data,
     api_base_url = api_base_url,
     token = api_token, 
     unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback), 
-    page_size = 1000
+    page_size = 1500
   )
   
   
