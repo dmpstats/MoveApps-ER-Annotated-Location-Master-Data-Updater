@@ -475,8 +475,12 @@ fetch_hist <- function(api_base_url,
     page_size = page_size
   ) 
   
+  
   if(nrow(obs_cluster_non_excluded) > 0){
-    obs_cluster_non_excluded <- dplyr::filter(obs_cluster_non_excluded, exclusion_flags == 0)
+    obs_cluster_non_excluded <- obs_cluster_non_excluded |> 
+      dplyr::filter(exclusion_flags == 0) |> 
+      # ensure boolean-type columns "masked" as character are coerced to logicals
+      dplyr::mutate(dplyr::across(dplyr::where(is_masked_bool), as.logical))
   }
   
   
@@ -907,7 +911,7 @@ get_source_subjects <- function(src, api_base_url, token){
   req_src |> 
     #httr2::req_error(~FALSE)|> 
     httr2::req_perform() |> 
-    resp_body_json() |> 
+    httr2::resp_body_json() |> 
     purrr::pluck("data")
 }
 
@@ -2401,5 +2405,29 @@ generate_uuid <- function(n = 1){
     format(Sys.time(), "%Y%m%d-%H%M%S"), 
     #sample(1:1e4, n),
     sep = "-")
+}
+
+
+# Predicate: assess whether a boolean vector is masked as a character vector.
+# Return TRUE only when:
+# - x is a character vector, and
+# - there is at least one non-NA, non-empty element, and
+# - every non-NA, non-empty element equals "true" or "false" (case-insensitive, whole string)
+is_masked_bool <- function(x) {
+  if (!is.character(x)) return(FALSE)
+  if (length(x) == 0) return(FALSE)
+  
+  # Trim surrounding whitespace so " TRUE " matches
+  x_trim <- trimws(x)
+  
+  # Non-missing and non-empty entries
+  idx <- !is.na(x_trim) & nzchar(x_trim)
+  
+  # If there are no non-NA/non-empty elements -> not masked
+  if (!any(idx)) return(FALSE)
+  
+  # Check that every non-NA/non-empty element is exactly "true" or "false" (case-insensitive)
+  vals <- tolower(x_trim[idx])
+  all(vals %in% c("true", "false"))
 }
 

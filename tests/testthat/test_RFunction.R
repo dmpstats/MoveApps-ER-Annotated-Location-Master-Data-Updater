@@ -321,6 +321,44 @@ test_that("dev testing", {
     api_token = er_tokens$standrews.dev$brunoc, 
     store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
   )
+  
+  
+  rFunction(
+    data = test_sets$nam_2 |> slice(100:200), 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("lat", "lon", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+  
+  
+  test <- read_rds("c:/Users/Bruno/Downloads/Test_MA_ER_Master_Updater_App__Namibia_Study__Avian_Cluster_Detection__2025-07-25_17-02-05.rds")
+  
+  rFunction(
+    data = test, 
+    #cluster_id_col = "clust_id",
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("lat", "lon", "behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc,
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+    
+    
+    
+    
+  
 })
 
 
