@@ -2326,8 +2326,8 @@ coerce_col_types <- function(data, ref_data){
     x <- ref_data[[col]]
     data.frame(
       col_name = col,
-      cls = class(x)[[1]], # top-level class
-      units = ifelse(inherits(x, "units"), units::deparse_unit(x), NA)
+      ref_cls = class(ref_vct)[[1]], # top-level class in reference dataset
+      ref_units = ifelse(inherits(ref_vct, "units"), units::deparse_unit(ref_vct), NA)
     )
   }) |> 
     purrr::list_rbind()
@@ -2335,14 +2335,14 @@ coerce_col_types <- function(data, ref_data){
   # Coerce classes of columns of target dataset. Currently only dealing with 
   # `<units>`, `<POSIXT`> and `<integer64>`
   mutual_cols_prof |> 
-    purrr::pwalk(function(col_name, cls, units){
-      if (cls == "units"){
-        data[[col_name]] <<- units::set_units(data[[col_name]], units, mode = "standard")
-      } else if (cls == "POSIXct"){
+    purrr::pwalk(function(col_name, ref_cls, ref_units){
+      if (ref_cls == "units"){
+        data[[col_name]] <<- units::set_units(data[[col_name]], ref_units, mode = "standard")
+      } else if (ref_cls == "POSIXct"){
         data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC")
-      } else if (cls == "integer64") {
+      } else if (ref_cls == "integer64") {
         data[[col_name]] <<- bit64::as.integer64(data[[col_name]])
-      }
+      } 
     })
   
   data
