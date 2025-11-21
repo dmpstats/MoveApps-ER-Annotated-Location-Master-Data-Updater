@@ -12,6 +12,7 @@ library(tidyr)
 library(Gmedian)
 library(bit64)
 library(ids)
+library(xml2)
 # library(cowplot)
 # library(ggplot2)
 
