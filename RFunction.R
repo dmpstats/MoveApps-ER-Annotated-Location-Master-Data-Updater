@@ -2420,6 +2420,7 @@ generate_uuid <- function(n = 1){
 # - there is at least one non-NA, non-empty element, and
 # - every non-NA, non-empty element equals "true" or "false" (case-insensitive, whole string)
 is_masked_bool <- function(x) {
+  
   if (!is.character(x)) return(FALSE)
   if (length(x) == 0) return(FALSE)
   
