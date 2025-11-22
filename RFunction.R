@@ -510,7 +510,6 @@ fetch_hist <- function(api_base_url,
   }
   
   
-  
   # Handle retrieved datasets -------------------------------------
   # NB: early versions would drop obs tagged as "CLOSED" at this point. However
   # these obs MUST be kept for cross-referencing with the "new" dataset to
@@ -522,6 +521,7 @@ fetch_hist <- function(api_base_url,
 
   # stack-up the two datasets
   obs <- dplyr::bind_rows(obs_cluster_actv, obs_cluster_non_excluded)
+  
   
   # Retrieve required complementary data ------------------------------------------
   # Get manufacturer_id/tag_id, subject_name/individual_local_identifier 
@@ -546,9 +546,9 @@ fetch_hist <- function(api_base_url,
       }
       
       dplyr::tibble(
-        subject_id = subject_dets$id,
-        subject_name = subject_dets$name,
-        manufacturer_id = source_dets$manufacturer_id, 
+        er_subject_id = subject_dets$id,
+        er_subject_name = subject_dets$name,
+        er_manufacturer_id = source_dets$manufacturer_id, 
         provider = source_dets$provider
       )
       
@@ -565,16 +565,16 @@ fetch_hist <- function(api_base_url,
   # providers
   obs <- dplyr::left_join(obs, sources_info, by = "source") |> 
     filter(provider == provider_key)
-    
+  
+  
   # Process for output --------------------------------------------------------
   obs |> 
     dplyr::select(!c(exclusion_flags, provider)) |> 
     dplyr::mutate(
       er_obs_id = id,
       er_source_id = source,
-      er_manufacturer_id = manufacturer_id,
       #tag_id = manufacturer_id,
-      #individual_local_identifier = subject_name,
+      #individual_local_identifier = er_subject_name,
       recorded_at = lubridate::as_datetime(recorded_at, tz = "UTC"), 
       .before = 1,
       .keep = "unused"
@@ -1135,7 +1135,7 @@ match_sf_clusters <- function(hist_dt,
     out <- structure(
       list(
         matched_hist_dt = dplyr::tibble(
-          cluster_uuid = character(0), cluster_status = character(0), subject_name = character(0), er_manufacturer_id = character(0),
+          cluster_uuid = character(0), cluster_status = character(0), er_subject_name = character(0), er_manufacturer_id = character(0),
           recorded_at = NA_POSIXct_, er_obs_id = character(0), er_source_id = character(0),
           {{cluster_id_col}} := character(0), lon = numeric(0), lat = numeric(0)
         ) |>
@@ -1697,7 +1697,7 @@ merge_and_update <- function(matched_dt,
   }
   
   hist_req_cols <- c(
-    cluster_id_col, "cluster_uuid", "cluster_status", "subject_name", 
+    cluster_id_col, "cluster_uuid", "cluster_status", "er_subject_name", 
     "er_manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
   )
   hist_miss_cols <- hist_req_cols[hist_req_cols %notin% names(matched_hist_dt)]
@@ -1722,7 +1722,7 @@ merge_and_update <- function(matched_dt,
   ## Rename ER-based key "Observation" columns in historic dataset 
   matched_hist_dt <- matched_hist_dt |> 
     dplyr::rename(
-      individual_local_identifier = subject_name,
+      individual_local_identifier = er_subject_name,
       {{timestamp_col}} := recorded_at
     )
 
