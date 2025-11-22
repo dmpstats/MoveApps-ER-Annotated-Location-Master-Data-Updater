@@ -404,7 +404,7 @@ test_that("get_hist() works as expected", {
   
   expect_identical(
     hist_dt |> 
-      arrange(subject_id, recorded_at) |> 
+      arrange(er_subject_id, recorded_at) |> 
       select(lat, lon, cluster_uuid,  behav),
     
     dt |> 
@@ -523,9 +523,6 @@ test_that("is_masked_bool(): FALSE when any non-NA element is not a whole-word m
   # substring is not a whole-word, so first element fails
   expect_false(is_masked_bool(c("someFalseValue", "false")))  
   expect_false(is_masked_bool(c("nottruehere", "falsehood")))
-  # empty strings
-  expect_false(is_masked_bool(c("", "")))
-  expect_false(is_masked_bool(c(NA_character_, "")))
 })
 
 
@@ -544,6 +541,9 @@ test_that("is_masked_bool(): FALSE for empty or all-NA character vectors", {
   expect_false(is_masked_bool(character(0)))
   # all NAs
   expect_false(is_masked_bool(c(NA_character_, NA_character_)))
+  # empty strings
+  expect_false(is_masked_bool(c("", "")))
+  expect_false(is_masked_bool(c(NA_character_, "")))
 })
 
 
