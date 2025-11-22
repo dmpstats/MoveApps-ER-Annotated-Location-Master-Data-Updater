@@ -336,7 +336,7 @@ test_that("merge_and_update() Case 1: 1 cluster updated & 1 cluster unchanged + 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = glue("{tag_id}-{deployment_id}"),
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
@@ -409,7 +409,7 @@ test_that("merge_and_update() Case 2: 2 old clusters updated + 2 new clusters", 
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
       ) |> 
@@ -474,7 +474,7 @@ test_that("merge_and_update() Case 3: 2 old clusters unchanged + 1 new clusters"
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
@@ -542,7 +542,7 @@ test_that("merge_and_update() Case 4: obs get dropped/recruited from/to cluster"
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
@@ -618,7 +618,7 @@ test_that("merge_and_update() Case 5: cluster splits into 2 clusters", {
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
@@ -691,7 +691,7 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       
       .keep = "unused"
@@ -800,7 +800,7 @@ test_that("merge_and_update(): CLOSED/ACTIVE cluster classification works as exp
       cluster_status = ifelse(!is.na(cluster_uuid), "CLOSED", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       
       .keep = "unused"
@@ -858,7 +858,7 @@ test_that("merge_and_update() changes in store cols are detected an patched", {
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
@@ -924,7 +924,7 @@ test_that("merge_and_update() Cluster Fusion Case 1: 2 old [Full Match] -> 1 new
       cluster_status = ifelse(!is.na(cluster_uuid), "ACTIVE", NA),
       recorded_at = timestamp,
       er_manufacturer_id = tag_id,
-      subject_name = individual_local_identifier,
+      er_subject_name = individual_local_identifier,
       er_obs_id = ids::uuid(n()),
       .keep = "unused"
     ) |> 
