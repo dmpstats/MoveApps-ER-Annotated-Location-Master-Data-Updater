@@ -22,11 +22,12 @@ test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key
 
 nam_3mths <- httr2::secret_read_rds("data/raw/vult_test_data_nam3mths.rds", key = I(app_key))
 
+savahn <- httr2::secret_read_rds("data/raw/vult_test_data_savahn.rds", key = I(app_key))
+
 er_tokens <- httr2::secret_read_rds("dev/er_tokens.rds", key = I(app_key))
 
 # activate browser() when there is an error, for interactive debugging
 #options(error = recover)
-
 #options(error = NULL)
 
 # ---------------------------------------- #
@@ -41,6 +42,7 @@ testthat::test_file("tests/testthat/test_merging-fns.R")
 
 # Main rFunction
 testthat::test_file("tests/testthat/test_RFunction.R")
+
 
 
 
@@ -87,6 +89,7 @@ window_intervals <- tibble(
   end = start + window_span
 ) |> 
   filter(end <= end_dttm + window_shift) 
+
 
 ### Run ----------
 
@@ -336,6 +339,10 @@ deep_clean_obs(
 
 
 
+
+
+
+
 # ---------------------------------------- #
 # ----    MoveApps SDK testing          ----
 # ---------------------------------------- #
@@ -368,21 +375,219 @@ delete_obs(pushed_test_obs$id, er_tokens$standrews.dev$brunoc)
 
 
 
-# # ----------------------------------------- #
-# # ----   Simulation-based testing   ----
-# # ----------------------------------------- #
+
+wf_dt <- read_rds("c:/Users/Bruno/Downloads/Test_MA_ER_Master_Updater_App__Namibia_Study__Avian_Cluster_Detection__2025-07-25_15-07-03.rds")
+
+
+posting_dttm <- now()
+
+output_dt <- rFunction(
+  data = wf_dt, 
+  api_hostname = "standrews.dev.pamdas.org",
+  api_token = er_tokens$standrews.dev$brunoc, 
+  store_cols_str = NULL, 
+  dist_thresh = 120
+)
+
+
+
+
+
+
+# ---------------------------------------- #
+# ----    NC Zoo ER Instance Testing    ----
+# ---------------------------------------- #
+
+
+fetch_hist(api_base_url = "https://ncz-vultures-test.pamdas.org/api/v1.0/", 
+            token = er_tokens$`ncz-vultures-test`$brunoc, 
+            unclust_min_date = as.POSIXct("2024-03-10"), 
+            include_details = TRUE,
+            page_size = 5000,
+            provider_key = "moveapps_ann_locs"
+)
+
+
+
+test <- get_obs(
+  api_base_url = "https://ncz-vultures-test.pamdas.org/api/v1.0",
+  token = "FnrVflwqlSBsD5lKRtliQhs4kX3rsm", #er_tokens$`ncz-vultures-test`$brunoc, 
+  filter = 0,
+  min_date = as.POSIXct("2024-03-10"), 
+  max_date = as.POSIXct("2025-10-01")
+)
+
+
+dt2 <- readRDS("dev/misc data/Test_Merge_SA__Test_Merge_for_Southern_Africa__Cluster_Importance_Scoring__2025-11-18_05-45-36.rds")
 # 
-# source("tests/simulate_cluster_merging.R")
-# 
-# 
-# simulate_cluster_merging()
-# 
-# rFunction(
-#   data = nam_1mth_thin, 
-#   api_hostname = "standrews.pamdas.org",
-#   api_token = "oosoosooos",
-#   store_cols_str = paste(store_cols, collapse = ",")
+# output_dt <- rFunction(
+#   data = dt1, 
+#   api_hostname = "ncz-vultures-test.pamdas.org",
+#   api_token = er_tokens$`ncz-vultures-test`$brunoc, 
+#   store_cols_str = NULL, 
+#   dist_thresh = 120
 # )
 
+
+
+# ---------------------------------------- #
+# ----    St Andrews Main instance      ----
+# ---------------------------------------- #
+
+test <- get_obs(
+  api_base_url = "https://standrews.pamdas.org/api/v1.0",
+  token = er_tokens$standrews$brunoc, 
+  filter = 0,
+  min_date = lubridate::now() - lubridate::days(2)
+)
+
+
+fetch_hist(api_base_url = "https://standrews.pamdas.org/api/v1.0", 
+           token = er_tokens$standrews$brunoc, 
+           unclust_min_date = lubridate::now() - lubridate::days(2), 
+           include_details = TRUE,
+           page_size = 5000,
+           provider_key = "moveapps_ann_locs"
+)
+
+
+
+
+## >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+## ----  Rolling window Runs     ----
+## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+# Key goal here is to test the scenario where there are observations from other
+# different source providers already present in ER  (e.g. data pulled directly
+# from Movebank), as in the main standrews instance
+
+### Set-up -----
+
+#store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature", "stationary")
+
+## schedule run parameters
+window_span <- days(15)
+window_shift <- days(3)
+start_dttm <- min(savahn$timestamp)
+end_dttm <- max(savahn$timestamp)
+
+window_intervals <- tibble(
+  start = seq(start_dttm, end_dttm, by = period_to_seconds(window_shift)),
+  end = start + window_span
+) |> 
+  filter(end <= end_dttm + window_shift) 
+
+
+### Run ----------
+
+# initialize iteration counter
+step <- 1
+nruns <- nrow(window_intervals)
+
+window_outputs <- window_intervals |> 
+  #slice(1:3) |> 
+  pmap(function(start, end){
+    #browser()
+    
+    cli::cli_rule()
+    cli::cli_h1("Starting Iterative Run {step}/{nruns} @ {now()}")
+    
+    start_run <- now()
+    
+    out <- savahn |> 
+      filter(between(timestamp, start, end)) |> 
+      rFunction(
+        api_hostname = "standrews.pamdas.org",
+        api_token = er_tokens$standrews$brunoc, 
+        lookback = 5L,
+        #store_cols_str = paste(store_cols, collapse = ","), 
+        dist_thresh = 100,
+        days_thresh = 14, 
+        active_days_thresh = 15
+      )
+    
+    end_run <- now()
+    
+    cli::cli_h2("Finished Run {step}/{nruns}. Runtime: {round(difftime(end_run, start_run, units = 'mins'), 3)} mins")
+    
+    # update iterating counter
+    step <<- step + 1
+    
+    Sys.sleep(5)
+    
+    out
+  })
+
+
+
+### checks -------------------
+
+# download all data in ER
+dt_master <- get_obs(
+  api_base_url = "https://standrews.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews$brunoc, 
+  created_after = now() - hours(3),
+  page_size = 6000
+  #created_after = run_start_dttm
+) |> 
+  filter(
+    source %in% c("7b3531ea-653c-4d66-9066-0b863d5175f2", "13c9df5d-a4a7-4932-b420-13896d0c0f64")
+  )
+
+
+# compare nrows
+nrow(dt_master) == nrow(nam_1mth_thin)
+
+# compare cluster data
+orig_clusters <- savahn |> 
+  filter(!is.na(clust_id)) |> 
+  data.frame() |> 
+  group_by(clust_id) |> 
+  summarise(
+    spawn = min(timestamp),
+    end = max(timestamp),
+    n = n()
+  )|> 
+  arrange(spawn) 
+
+processed_clusters <- dt_master |> 
+  filter(!is.na(cluster_uuid)) |> 
+  group_by(cluster_uuid) |> 
+  mutate(recorded_at = ymd_hms(recorded_at)) |> 
+  summarise( 
+    spawn = min(recorded_at),
+    end = max(recorded_at),
+    n = n()
+  ) |> 
+  arrange(spawn) 
+
+
+# full consistency between original and split-and-merged data!!!
+full_join(orig_clusters, processed_clusters, by = c("spawn", "end")) |> 
+  mutate(
+    n_diff = n.x - n.y,
+    #spawn_diff = difftime(end.x, end.y, units = "days")
+  ) |> 
+  print(n = 100)
+
+
+
+
+
+
+
+ #wf_dt <- read_rds("dev/misc data/Vulture_Study_ER__Savannah_test__Avian_Cluster_Detection__2025-11-20_06-43-08.rds")
+# wf_dt <- read_rds("dev/misc data/Vulture_Study_ER__Savannah_test__Avian_Cluster_Detection__2025-11-21_14-56-27.rds")
+# 
+# # posting_dttm <- now()
+# 
+# output_dt <- rFunction(
+#   data = wf_dt, 
+#   api_hostname = "standrews.pamdas.org",
+#   api_token = er_tokens$standrews$brunoc,
+#   lookback = 2L,
+#   store_cols_str = NULL, 
+#   dist_thresh = 100
+# )
 
 
