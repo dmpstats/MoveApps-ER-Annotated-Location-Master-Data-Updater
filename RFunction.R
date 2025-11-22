@@ -450,7 +450,7 @@ fetch_hist <- function(api_base_url,
   
   # Retrieve observations ---------------------------------------
   
-  # ALL observations in active clusters up to max_date
+  # Get ALL observations in active clusters up to max_date
   obs_cluster_actv <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
@@ -480,10 +480,24 @@ fetch_hist <- function(api_base_url,
     page_size = page_size
   ) 
   
-  
+  # Important notes: 
+  # (1) Change in ER to accommodate the map display of ACTIVE cluster, which are
+  # tagged with a "3rd party flag" to allow for filtering, means that filter = 0
+  # now also returns obs in ACTIVE clusters.Therefore, an additional filtering
+  # step is required here on the fetched data to keep only non-excluded 0s (i.e.
+  # non-clustered and closed clusters)
+  # (2) filter = 0 also fetches obs from ALL source providers (not just
+  # "moveapps_ann_locs"). Currently there is no parameter for filtering by
+  # source provider. This means returned columns are defined by data structures
+  # under existent source providers, over which we have no control. Thus we need
+  # to ensure key identifier columns used in our framework are dropped here to
+  # avoid duplication and misspecification issues in the subsequent data
+  # processing of the app
   if(nrow(obs_cluster_non_excluded) > 0){
     obs_cluster_non_excluded <- obs_cluster_non_excluded |> 
       dplyr::filter(exclusion_flags == 0) |> 
+      # drop fetched columns that otherwise would cause issues during overall processing. This stems from 
+      dplyr::select(-any_of(c("subject_name", "manufacturer_id", "individual_local_identifier"))) |> 
       # ensure boolean-type columns "masked" as character are coerced to logicals
       dplyr::mutate(dplyr::across(dplyr::where(is_masked_bool), as.logical))
   }
