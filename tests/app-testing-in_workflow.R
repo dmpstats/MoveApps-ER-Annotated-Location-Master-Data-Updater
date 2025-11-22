@@ -107,7 +107,7 @@ nruns <- nrow(window_ints)
 step <- 1
 
 window_outputs <- window_ints |> 
-  slice(7:37) |> 
+  #slice(7:37) |> 
   pmap(function(start, end){
     
     #browser()
@@ -358,7 +358,7 @@ deep_clean_obs(
 
 ## schedule run parameters
 window_span <- days(30)
-window_shift <- days(1)
+window_shift <- days(2)
 run_end_dttm <- now()
 run_start_dttm <- run_end_dttm - days(60)
 

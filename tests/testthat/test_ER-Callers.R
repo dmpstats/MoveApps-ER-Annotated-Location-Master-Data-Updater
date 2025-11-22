@@ -20,31 +20,10 @@ if(rlang::is_interactive()){
 test_sets <- test_path("data/vult_unit_test_data.rds") |> 
   httr2::secret_read_rds(key = I(app_key)) 
 
+# nam_lrg <- httr2::secret_read_rds("data/raw/vult_test_data_nam3mths.rds", key = I(app_key)) |> 
+#   slice(1:8000)
 
 #active_flag <- bit64::as.integer64(1311673391471656960)
-# 
-# # Helper to delete observations in ER
-# delete_obs <- function(obs_ids, token){
-#   
-#   res <- purrr::map_dbl(obs_ids, function(id){
-#     
-#     api_endpnt <- file.path("https://standrews.dev.pamdas.org/api/v1.0/observation", id)
-#     
-#     req <- httr2::request(api_endpnt) |> 
-#       req_auth_bearer_token(token) |> 
-#       req_method("DELETE") |> 
-#       req_headers(
-#         "Accept" = "application/json",
-#         "Content-Type" = "application/json"
-#       )
-#     req |>  httr2::req_perform() |> httr2::resp_status()
-#   }, 
-#   .progress = TRUE)
-#   
-#   cli::cli_inform("Successfully deleted {sum(res == 200)} out of {length(obs_ids)} observations from ER")
-# }
-
-
 
 
 # ra_post_obs() & get_obs() ---------------------------------------------
@@ -397,11 +376,37 @@ test_that("Data patched as expected", {
 
 
 
-
 # Development Testing  -------------------------------------------------------------
 test_that("get_obs() dev testing", {
   
   skip()
+  
+  
+  # get obs annotated as members of "active" clusters
+  test <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    filter = active_flag,
+    min_date = lubridate::now() - lubridate::days(40),
+    max_date = NULL, 
+    page_size = 200, 
+    include_details = TRUE,
+    created_after = NULL
+  )
+  
+  nrow(test)
+  
+  test <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    filter = active_flag,
+    min_date = lubridate::now() - lubridate::days(2),
+    max_date = NULL, 
+    page_size = 100, 
+    include_details = TRUE,
+    created_after = NULL
+  )
+  
   
   # get obs annotated as members of "active" clusters
   get_obs(
@@ -426,6 +431,34 @@ test_that("get_obs() dev testing", {
     include_details = TRUE,
     created_after = NULL
   )
+  
+  
+  
+  test <- get_obs(
+    api_base_url = "https://ncz-vultures-test.pamdas.org/api/v1.0",
+    token = er_tokens$`ncz-vultures-test`$brunoc,
+    filter = 0,
+    min_date = lubridate::now() - lubridate::years(2),
+    max_date = NULL, 
+    page_size = 100, 
+    include_details = TRUE,
+    created_after = NULL
+  )
+  
+  
+  
+  test <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0",
+    token = er_tokens$standrews.dev$brunoc,
+    filter = 0,
+    min_date = lubridate::now() - lubridate::days(5),
+    max_date = NULL, 
+    page_size = 100, 
+    include_details = TRUE,
+    created_after = NULL
+  )
+  
+  
 
 })
 
@@ -460,6 +493,72 @@ test_that("ra_post_obs() dev testing", {
     #batch_size = 20
   )
   
+  
+  
+  dt |> 
+    slice(1) |> 
+    mutate(
+      individual_local_identifier = "Gervasio",
+      tag_id = bit64::as.integer64(123456)
+    ) |> 
+    ra_post_obs(
+      tm_id_col = tm_id_col,
+      additional_cols = additional_cols,
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc#,
+      #batch_size = 20
+    )
+  
+  
+  dt |> 
+    slice(2) |> 
+    mutate(
+      individual_local_identifier = "Belchior",
+      tag_id = bit64::as.integer64(123456)
+    ) |> 
+    ra_post_obs(
+      tm_id_col = tm_id_col,
+      additional_cols = additional_cols,
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc
+    )
+  
+  
+  
+  
+  dt |> 
+    slice(3) |> 
+    mutate(
+      individual_local_identifier = "Gervasio",
+      tag_id = bit64::as.integer64(1098765)
+    ) |> 
+    ra_post_obs(
+      tm_id_col = tm_id_col,
+      additional_cols = additional_cols,
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc
+    )
+  
+  
+  bit64::abs.integer64(c(1080727521 + 838981044))
+  
+  
+  dt |> 
+    slice(1:2) |> 
+    mutate(
+      individual_local_identifier = c("Belchior", "Gervasio"),
+      tag_id = bit64::as.integer64(123456)
+    ) |> 
+    ra_post_obs(
+      tm_id_col = tm_id_col,
+      additional_cols = additional_cols,
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc#,
+      #batch_size = 20
+    )
+  
+  
+  
 })
 
 
@@ -485,8 +584,8 @@ test_that("patch_obs() dev testing", {
   
   skip()
   
-  # PATCHing retried if API returns 502 error, currently occurring when number
-  # of sqeuential requests is very high
+  #### PATCHing retried if API returns 502 error -----
+  #### currently occurring when number of  sequential requests is very high
   
   store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
                   "sunset_timestamp", "temperature")
