@@ -868,7 +868,9 @@ get_obs <- function(api_base_url,
       obs <- obs |>
         # Drop the main observation_details col
         dplyr::select(-"observation_details") |>
-        dplyr::bind_cols(observation_details_out)
+        dplyr::bind_cols(observation_details_out) |> 
+        # ensure boolean-type columns "masked" as character are coerced to logicals
+        dplyr::mutate(dplyr::across(dplyr::where(is_masked_bool), as.logical))
     }
 
     # Append the current page of results to the list
