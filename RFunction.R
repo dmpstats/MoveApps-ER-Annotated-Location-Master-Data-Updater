@@ -463,12 +463,19 @@ fetch_hist <- function(api_base_url,
   )
   
   
-  # get un-clustered and closed observations (tagged as non_excluded 0) from
-  # min_date to max_date Note: Change in ER to accommodate the map display of
-  # ACTIVE cluster, which are tagged with a "3rd party flag" to allow for
-  # filtering, means that filter = 0 now also returns obs in ACTIVE clusters.
-  # Therefore, an additional filtering step is required here on the fetched data
-  # to keep only non-excluded 0s (i.e. non-clustered and closed clusters)
+  # Ensure fetched obs are strictly from active clusters 
+  if(nrow(obs_cluster_actv) > 0){
+    if(any(obs_cluster_actv$cluster_status != "ACTIVE")){
+      cli::cli_abort(c(
+        "Unexpected non-active clusters were returned from historical data.",
+        x = "The `active_flag` filter in ER's Observations GET request appears not to be functioning correctly."
+      ))
+    }
+  }
+  
+  
+  # Get un-clustered and closed observations (tagged as non_excluded 0) from
+  # min_date to max_date
   obs_cluster_non_excluded <- get_obs(
     api_base_url = api_base_url, 
     token = token, 
