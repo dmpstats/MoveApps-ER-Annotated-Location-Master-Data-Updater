@@ -136,6 +136,25 @@ nam_3mths <- study_level_wf(
 
 
 
+# Savahna
+savahn <- study_level_wf(
+  apps_paths = apps_paths,
+  mvbk_usr = mvbk_creds$mlmackenzie$usr, 
+  mvbk_pwd = mvbk_creds$mlmackenzie$pwd,
+  study_name = "Savannah-MEFT", 
+  lastXdays = 30
+) |> 
+  cluster_app(
+    clustercode = "SAV",
+    path_to_app = apps_paths$clust, 
+    clusterstep = 5,
+    clusterwindow = 7,
+    d = 500, 
+    match_thresh = 100,
+    clustexpiration = 14, 
+    behavsystem = TRUE
+  ) 
+
 
 
 
@@ -225,6 +244,8 @@ httr2::secret_write_rds(test_sets, path = "data/raw/vult_test_data.rds", key = I
 
 
 httr2::secret_write_rds(nam_3mths, path = "data/raw/vult_test_data_nam3mths.rds", key = I(app_key))
+
+httr2::secret_write_rds(savahn, path = "data/raw/vult_test_data_savahn.rds", key = I(app_key))
 
 
 # subset for unit testing
