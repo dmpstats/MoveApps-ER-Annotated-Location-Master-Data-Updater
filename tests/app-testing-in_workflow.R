@@ -447,7 +447,15 @@ window_outputs <- window_ints |>
 
 
 
+# Clean Up -------------------------------------
 
+movebank_remove_credentials()
+
+deep_clean_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+)
 
 # ------------------------------------------------------------------------------ #
 # ----        Run Workflow Locally for WhitebackedVulturesZambiaKendall     -----
@@ -457,8 +465,170 @@ window_outputs <- window_ints |>
 
 
 # ------------------------------------------------- #
-# ----        Run Workflow Locally for SAVAHNAH     -----
+# ----        Run Workflow Locally for SAVAHNAH  -----
 # ------------------------------------------------- #
+
+
+## schedule run parameters
+window_span <- days(30)
+window_shift <- days(2)
+run_end_dttm <- now()
+run_start_dttm <- run_end_dttm - days(60)
+
+window_ints <- tibble(
+  start = seq(run_start_dttm, run_end_dttm, by = period_to_seconds(window_shift)),
+  end = start + window_span
+) |> 
+  filter(end <= run_end_dttm + window_shift) 
+
+
+#' Run scheduled run --------------------------------------------------
+
+#store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", 
+#                "temperature", "stationary", "nightpoint", "event_id")
+
+nruns <- nrow(window_ints)
+
+# initialize iteration counter
+step <- 1
+
+clust_dt <- list()
+
+window_outputs <- window_ints |> 
+  slice(1:3) |> 
+  pmap(function(start, end){
+    
+    #browser()
+    
+    cli::cli_rule()
+    cli::cli_h1("Starting Workflow Run {step}/{nruns} @ {now()}")
+    
+    start_run <- now()
+    
+    clust_dt[[step]] <<- study_level_wf(
+      apps_paths = apps_paths,
+      mvbk_usr = mvbk_creds$mlmackenzie$usr, 
+      mvbk_pwd = mvbk_creds$mlmackenzie$pwd,
+      study_name = "Savannah-MEFT",
+      tm_start = start, 
+      tm_end = end, 
+      loc_tm_thin_mins = 3, 
+      acc_tm_thin_mins = 1
+    ) |> 
+      cluster_app(
+        clustercode = "SAV",
+        path_to_app = apps_paths$clust, 
+        match_thresh = 100, 
+        clustexpiration = 14,
+        behavsystem = TRUE
+      )
+    
+    # need to re-source the local rFunction
+    source("RFunction.R")
+    
+    out <- rFunction(
+      data = clust_dt[[step]],
+      api_hostname = "standrews.dev.pamdas.org",
+      api_token = er_tokens$standrews.dev$brunoc, 
+      #store_cols_str = paste(store_cols, collapse = ","), 
+      dist_thresh = 100,
+      days_thresh = 14,   
+      active_days_thresh = 16
+    ) #|> 
+      #cluster_metrics_app(
+      #  cluster_id_col = "cluster_uuid",
+      #  output_type = "cluster-based",
+      #  cluster_tbl_type = "whole-only",
+      #  path_to_app = apps_paths$clust_metrics
+      #)  |> 
+      #cluster_importance_app(
+      #  map_output = FALSE, 
+      #  path_to_app = apps_paths$clust_importance
+      #) 
+    
+    end_run <- now()
+    
+    cli::cli_h2("Finished Workflow Run {step}/{nruns}. Runtime: {round(difftime(end_run, start_run, units = 'mins'), 3)} mins")
+    
+    # update iterating counter
+    step <<- step + 1
+    
+    out
+    
+  })
+
+
+
+clust_dt[[1]]
+clust_dt[[2]]
+clust_dt[[3]]
+
+
+move2::mt_stack(
+  clust_dt[[1]],
+  clust_dt[[2]], .track_combine = "merge"
+) |> 
+  arrange(event_id) |> 
+  group_by(event_id) |> 
+  mutate(
+    n = n()
+  ) |> 
+  filter(n > 1) |> 
+  filter(event_id == "43102409734")
+  
+  
+  summarise(clust_ids = length(unique(clust_id))) |> 
+  filter(clust_ids > 1)
+
+
+window_outputs[[1]]
+window_outputs[[2]]
+window_outputs[[3]]
+
+
+# Clean Up -------------------------------------
+
+movebank_remove_credentials()
+
+deep_clean_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+)
+
+
+
+# Clean Up -------------------------------------
+
+movebank_remove_credentials()
+
+deep_clean_obs(
+  api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+  token = er_tokens$standrews.dev$brunoc, 
+  sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+)
+
+
+# # Savahna
+# savahn <- study_level_wf(
+#   apps_paths = apps_paths,
+#   mvbk_usr = mvbk_creds$mlmackenzie$usr, 
+#   mvbk_pwd = mvbk_creds$mlmackenzie$pwd,
+#   study_name = "Savannah-MEFT", 
+#   lastXdays = 30
+# ) |> 
+#   cluster_app(
+#     clustercode = "SAV",
+#     path_to_app = apps_paths$clust, 
+#     clusterstep = 5,
+#     clusterwindow = 7,
+#     d = 500, 
+#     match_thresh = 100,
+#     clustexpiration = 14, 
+#     behavsystem = TRUE
+#   ) 
+# 
+
 
 
 
