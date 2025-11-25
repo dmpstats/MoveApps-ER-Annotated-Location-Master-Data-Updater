@@ -131,8 +131,8 @@ rFunction = function(data,
   ### Parse name of non-tracking attributes to include in upload
   if(is.null(store_cols_str) || (length(store_cols_str) == 1 && nchar(store_cols_str) == 0)){
     # the default NULL stores all non-tracking columns (i.e. except locations and timne)
-    store_cols <- setdiff(names(data), c(tm_id_col, "lat", "lon"))
-  }else {
+    store_cols <- setdiff(names(data), c(tm_id_col, "lat", "lon", cluster_id_col))
+  } else {
     # parse requested event list field names into a vector (allows comma or semicolon)
     store_cols_parsed <- unlist(strsplit(store_cols_str,",|;"))
     store_cols <- gsub("\\s+", "", store_cols_parsed)
