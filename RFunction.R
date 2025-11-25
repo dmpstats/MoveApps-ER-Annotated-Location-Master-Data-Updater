@@ -176,7 +176,7 @@ rFunction = function(data,
   ## Perform clusters matching ------
   
   ### Prepare historical data for merging
-  if(not_null(hist_dt)){
+  if(not_null(hist_dt) && nrow(hist_dt) > 0){
     hist_dt <- hist_dt |> 
       sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
   }
@@ -316,7 +316,7 @@ rFunction = function(data,
   ## Here we force all dispersed clusters to be located at (0,0) and send them
   ## back in time. NOTE: each dispersed cluster requires a minimum of two rows of
   ## observations for metrics derivations
-  if(not_null(dispersed_cluster_uuid)) {
+  if(not_null(dispersed_cluster_uuid) && length(dispersed_cluster_uuid) > 0) {
     
     dispersed_clusters_tracker <- out |>
       as_tibble() |>
