@@ -14,7 +14,8 @@
       [1m[33mError[39m in `httr2::req_perform()`:[22m
       [33m![39m Failed to perform HTTP request.
       [1mCaused by error in `curl::curl_fetch_memory()`:[22m
-      [33m![39m Could not resolve hostname [WRONG_URL.co.uk]: Could not resolve host: WRONG_URL.co.uk
+      [33m![39m Could not resolve hostname [WRONG_URL.co.uk]:
+      Could not resolve host: WRONG_URL.co.uk
 
 ---
 
@@ -22,10 +23,10 @@
       get_obs(api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", token = "INVALID_TOKEN")
     Condition
       [1m[33mError[39m in `httr2::req_perform()`:[22m
-      [33m![39m HTTP 401 Unauthorized.
-      • OAuth error
-      • : 
-      • Failed to request observations historical data.
+      [38;5;254m[33m![38;5;254m HTTP 401 Unauthorized.
+      [36m•[38;5;254m OAuth error
+      [36m•[38;5;254m :
+      [36mℹ[38;5;254m Failed to request observations historical data.[39m
 
 ---
 

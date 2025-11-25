@@ -20,7 +20,7 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 # rFunction() --------------------------------------------------------------------------
 test_that("output is a valid move2 object", {
   
-  posting_dttm <- now()
+  posting_dttm <- now() - seconds(30)
   
   input_dt <- test_sets$nam_1 |> slice(1:10)
   store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
@@ -195,7 +195,7 @@ test_that("Fused clusters are signalled in output", {
 
 test_that("Inclusion of 'lat'/'lon' in `store_cols_str` is handled appropriately", {
   
-  posting_dttm <- now()
+  posting_dttm <- now() - seconds(30)
   
   ## "lat" & "lon" included in `store_cols_str` ------
   expect_no_error(
