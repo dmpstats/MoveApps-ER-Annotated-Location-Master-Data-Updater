@@ -107,6 +107,7 @@ rFunction = function(data,
   dt_crs <- sf::st_crs(data)  # CRS
   sf_col <- attr(data, "sf_column") # geometry column
   
+  
   ## Location coordinates  ------
   ### Add lat/long columns to input data, if absent; otherwise, ensure they're 
   ### named a "lat"/"lon" 
@@ -201,9 +202,7 @@ rFunction = function(data,
     timestamp_col = tm_id_col, 
     store_cols = store_cols,
     active_days_thresh = active_days_thresh
-  ) |> 
-    # dropping row created above to deal with NULL `hist_dt`, identified as empty lat/lon
-    tidyr::drop_na(lat, lon)
+  )
   
   # extract UUIDs of clusters nullified due to fusion events
   dispersed_cluster_uuid <- attr(merged_dt, "dispersed_cluster_uuid")
