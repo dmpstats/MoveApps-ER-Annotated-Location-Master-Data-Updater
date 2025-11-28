@@ -2362,12 +2362,22 @@ coerce_col_types <- function(data, ref_data){
   # `<units>`, `<POSIXT`> and `<integer64>`
   mutual_cols_prof |> 
     purrr::pwalk(function(col_name, ref_cls, ref_units){
+      
       if (ref_cls == "units"){
+        # convert to numeric if vector is all NAs
+        if(all(is.na(data[[col_name]]))){
+          data[[col_name]] <- NA_real_
+        }
         data[[col_name]] <<- units::set_units(data[[col_name]], ref_units, mode = "standard")
+        
       } else if (ref_cls == "POSIXct"){
+        
         data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC")
+        
       } else if (ref_cls == "integer64") {
+        
         data[[col_name]] <<- bit64::as.integer64(data[[col_name]])
+        
       } 
     })
   
