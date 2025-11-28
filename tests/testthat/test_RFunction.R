@@ -336,6 +336,42 @@ test_that("Presence of NAs in lat/lon cols of input data handled as expected", {
 
 
 
+test_that("App outputs expected clusters", {
+  
+  run1 <- rFunction(
+    data = test_sets$nam_2 |> filter(clust_id %in% c("NAM.1", "NAM.2")),
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  # Obs in output should be annotated to 2 clusters
+  expect_length(unique(run1$cluster_uuid), 2)
+  
+  
+  run2 <- rFunction(
+    data = test_sets$nam_2 |> filter(clust_id %in% c("NAM.3", "NAM.4", "NAM.5")),
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
+  # Obs in output should now be annotated to 3 clusters
+  expect_length(unique(run2$cluster_uuid), 3)
+  
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+})
+
+
+
+
+
 
 test_that("dev testing", {
   
