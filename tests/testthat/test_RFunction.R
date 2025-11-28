@@ -307,6 +307,34 @@ test_that("Absence of 'lat'/'lon' cols in input data handled as expected", {
 
 
 
+test_that("Presence of NAs in lat/lon cols of input data handled as expected", {
+  
+  # If not handled adequately, NAs in lat-lon cols will cause error in
+  # radio-agent posting. Code checks presence of NAs, recalculating lat-lon
+  # columns accordingly
+  expect_no_error(
+    out <- rFunction(
+      data = test_sets$nam_2 |> slice(1:10) |> 
+        mutate(
+          lat = if_else(dplyr::row_number() %in% c(2, 4), NA, lat),
+          lon = if_else(dplyr::row_number() %in% c(2, 4), NA, lon)
+        ), 
+      api_hostname = "standrews.dev.pamdas.org",
+      api_token = er_tokens$standrews.dev$brunoc, 
+      store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+    )
+  )
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+})
+
+
+
 
 
 test_that("dev testing", {
@@ -550,3 +578,38 @@ test_that("is_masked_bool(): FALSE for empty or all-NA character vectors", {
 test_that("is_masked_bool(): FALSE for mixed NA and non-matching values", {
   expect_false(is_masked_bool(c(NA_character_, "no", NA_character_))) # non-matching present -> FALSE
 })
+
+
+
+# bind_latlon() ---------------------------------------------
+
+test_that("bind_latlon() correctly attaches lon/lat for longlat sf object", {
+  coords <- data.frame(X = c(10, 20), Y = c(-5, 15))
+  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 4326)
+  pts_new <- bind_latlon(pts)
+  expect_true(all.equal(pts_new$lon, coords$X))
+  expect_true(all.equal(pts_new$lat, coords$Y))
+})
+
+
+test_that("bind_latlon() ataches lon/lat but original projection is kept", {
+  coords <- data.frame(X = c(500000, 400000), Y = c(4649776, 4650000))
+  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 32633)
+  pts_new <- bind_latlon(pts)
+  
+  expect_contains(names(pts_new), c("lat", "lon"))
+  expect_equal(sf::st_crs(pts_new), sf::st_crs(pts))
+  
+  # Coordinates must be numeric lat/lon
+  expect_type(pts_new$lon, "double")
+  expect_type(pts_new$lat, "double")
+  expect_equal(length(pts_new$lon), 2)
+})
+
+
+# Overwrites existing lon/lat columns
+test_that("bind_latlon() overwrites existing lon/lat columns", {
+  coords <- data.frame(X = 0, Y = 0, lon = NA, lat = NA)
+  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 4326)
+  pts_new <- bind_latlon(pts)
+  expect_false(any(is.na(pts_new$lon)))

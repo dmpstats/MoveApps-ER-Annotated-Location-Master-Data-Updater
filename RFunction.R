@@ -111,21 +111,18 @@ rFunction = function(data,
   ### Add lat/long columns to input data, if absent; otherwise, ensure they're 
   ### named a "lat"/"lon" 
   if(!any(grepl("^[l|L]at", names(data)))){
-    lon_lat <- if(sf::st_is_longlat(data)){
-      sf::st_coordinates(data)
-    } else {
-      data |>
-        sf::st_transform(4326) |>
-        sf::st_coordinates()
-    }
-    data$lon <- lon_lat[, 'X']
-    data$lat <- lon_lat[, 'Y']
-  } else{
+    data <- bind_latlon(data)
+  } else {
     # ensure we have cols named "lat"/"lon". Duplicates if other aliases are
     # present in input data
     data$lat <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]at"))
     data$lon <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]on"))
+    # re-bind lat-lon columns if NAs present
+    if(any(is.na(data$lat))){
+      data <- bind_latlon(data)
+    }
   }
+  
   
   ## Additional columns ---------
   ### Parse name of non-tracking attributes to include in upload
@@ -2461,3 +2458,24 @@ is_masked_bool <- function(x) {
   all(vals %in% c("true", "false"))
 }
 
+
+
+# Bind (or overwrite) columns for latitude and longitude coords to move2/sf
+# dataset. Original CRS projection remains unchanged
+bind_latlon <- function(data){
+  
+  stopifnot(inherits(data, "sf"))
+  
+  if(sf::st_is_longlat(data)){
+    lon_lat <- sf::st_coordinates(data)
+  } else {
+    lon_lat <- data |>
+      sf::st_transform(4326) |>
+      sf::st_coordinates()
+  }
+  
+  data$lon <- lon_lat[, 'X']
+  data$lat <- lon_lat[, 'Y']
+  
+  data
+}
