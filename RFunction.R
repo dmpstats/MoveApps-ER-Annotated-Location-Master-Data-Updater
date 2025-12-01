@@ -456,11 +456,14 @@ fetch_hist <- function(api_base_url,
     created_after = NULL,
     include_details = include_details,
     page_size = page_size
-  )
+  ) 
   
+  # format fetched data
+  obs_cluster_actv <- clean_obs(obs_cluster_actv)
   
   # Ensure fetched obs are strictly from active clusters 
   if(nrow(obs_cluster_actv) > 0){
+  
     if(any(obs_cluster_actv$cluster_status != "ACTIVE")){
       cli::cli_abort(c(
         "Unexpected non-active clusters were returned from historical data.",
@@ -468,7 +471,6 @@ fetch_hist <- function(api_base_url,
       ))
     }
   }
-  
   
   # Get un-clustered and closed observations (tagged as non_excluded 0) from
   # min_date to max_date
@@ -481,8 +483,12 @@ fetch_hist <- function(api_base_url,
     created_after = NULL,
     include_details = include_details,
     page_size = page_size
-  ) 
+  )
   
+  # format fetched observations data appropriately
+  obs_cluster_non_excluded <- clean_obs(obs_cluster_non_excluded)
+  
+
   # Important notes: 
   # (1) Change in ER to accommodate the map display of ACTIVE cluster, which are
   # tagged with a "3rd party flag" to allow for filtering, means that filter = 0
@@ -497,12 +503,12 @@ fetch_hist <- function(api_base_url,
   # avoid duplication and misspecification issues in the subsequent data
   # processing of the app
   if(nrow(obs_cluster_non_excluded) > 0){
+    
     obs_cluster_non_excluded <- obs_cluster_non_excluded |> 
       dplyr::filter(exclusion_flags == 0) |> 
-      # drop fetched columns that otherwise would cause issues during overall processing. This stems from 
-      dplyr::select(-any_of(c("subject_name", "manufacturer_id", "individual_local_identifier"))) |> 
-      # ensure boolean-type columns "masked" as character are coerced to logicals
-      dplyr::mutate(dplyr::across(dplyr::where(is_masked_bool), as.logical))
+      # drop fetched columns that otherwise would cause issues in overall processing
+      dplyr::select(-any_of(c("subject_name", "manufacturer_id", "individual_local_identifier")))
+    
   }
   
   
@@ -2268,6 +2274,7 @@ fill_track_gaps <- function(clustered_dt,
   ) |> 
     purrr::list_rbind()
   
+  
   # Handle retrieved data  ----------------------------------------------------
   # Retrieved data will have observations not tagged with exclusion flag used
   # for marking membership to "ACTIVE" clusters, so both  non-clustered and
@@ -2443,29 +2450,70 @@ generate_uuid <- function(n = 1){
 }
 
 
-# Predicate: assess whether a boolean vector is masked as a character vector.
+
+# Predicate: assess whether a numeric vector/column is masked as a character vector.
 # Return TRUE only when:
 # - x is a character vector, and
 # - there is at least one non-NA, non-empty element, and
-# - every non-NA, non-empty element equals "true" or "false" (case-insensitive, whole string)
-is_masked_bool <- function(x) {
+# - every non-NA, all non-empty elements are coercible to numeric (i.e. no NAs produced)
+is_masked <- function(x, what = c("bool", "num")) {
+  
+  what <- rlang::arg_match(what)
   
   if (!is.character(x)) return(FALSE)
   if (length(x) == 0) return(FALSE)
   
-  # Trim surrounding whitespace so " TRUE " matches
+  # Trim surrounding whitespace so " TRUE " or " 34 " matches
   x_trim <- trimws(x)
   
   # Non-missing and non-empty entries
   idx <- !is.na(x_trim) & nzchar(x_trim)
   
-  # If there are no non-NA/non-empty elements -> not masked
+  # If all elements are NA or empty -> not masked
   if (!any(idx)) return(FALSE)
   
-  # Check that every non-NA/non-empty element is exactly "true" or "false" (case-insensitive)
-  vals <- tolower(x_trim[idx])
-  all(vals %in% c("true", "false"))
+  if(what == "bool"){
+    
+    # Check that every non-NA/non-empty element is exactly "true" or "false" (case-insensitive)
+    vals <- tolower(x_trim[idx])
+    out <- all(vals %in% c("true", "false"))  
+    
+  } else if(what == "num") {
+    
+    # check if every element is coercible to numeric
+    out <- all(suppressWarnings(!is.na(as.numeric(x_trim[idx]))))
+    
+  }
+  
+  out
 }
+
+
+# Convert "NA" or "<NA>" strings to NA_character_ in a character vector 
+convert_na_string <- function(x) {  
+  if(!is.character(x)) return(x)
+  na_strings <- c("NA", "<NA>")  
+  replace(x, x %in% na_strings, NA_character_)  
+}
+
+
+# Cleaning observations data fetched from ER into amenable format
+clean_obs <- function(obs_dt){
+  
+  if(nrow(obs_dt) == 0) return(obs_dt)
+  
+  obs_dt |> 
+    dplyr::mutate(
+      # replace "NA" strings as formal NAs
+      dplyr::across(dplyr::where(is.character), convert_na_string),
+      # handle character-masked boolean columns
+      dplyr::across(dplyr::where(~ is_masked(.x, what = "bool")), as.logical),
+      # handle character-masked numeric columns
+      dplyr::across(dplyr::where(~ is_masked(.x, what = "num")), as.numeric)
+    )
+}
+
+
 
 
 

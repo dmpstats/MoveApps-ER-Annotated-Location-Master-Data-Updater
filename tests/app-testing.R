@@ -43,6 +43,9 @@ testthat::test_file("tests/testthat/test_merging-fns.R")
 # Main rFunction
 testthat::test_file("tests/testthat/test_RFunction.R")
 
+# helper functions in RFunction.R script
+testthat::test_file("tests/testthat/test_helpers-fns.R")
+
 
 
 

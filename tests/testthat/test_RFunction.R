@@ -2,6 +2,8 @@ library(rlang)
 library(httr2)
 library(lubridate)
 library(move2)
+library(units)
+library(tibble)
 #library(here)
 
 if(rlang::is_interactive()){
@@ -616,84 +618,4 @@ test_that("fill_track_gaps() works as expected", {
 
 
 
-# is_masked_bool() --------------
-
-test_that("is_masked_bool(): TRUE when all non-NA character elements are whole-word 'true' or 'false' (any case)", {
-  expect_true(is_masked_bool(c("true", "FALSE")))
-  # NA ignored, remaining matches -> TRUE
-  expect_true(is_masked_bool(c("TRUE", "True", NA_character_)))
-  expect_true(is_masked_bool(c("false", "true", "FALSE")))
-  expect_true(is_masked_bool(c("False", "true", "")))
-})
-
-
-test_that("is_masked_bool(): FALSE when any non-NA element is not a whole-word match", {
-  expect_false(is_masked_bool(c("true", "no")))
-  # substring is not a whole-word, so first element fails
-  expect_false(is_masked_bool(c("someFalseValue", "false")))  
-  expect_false(is_masked_bool(c("nottruehere", "falsehood")))
-})
-
-
-test_that("is_masked_bool(): FALSE for non-character inputs", {
-  # logical
-  expect_false(is_masked_bool(c(TRUE, FALSE)))
-  # factor
-  expect_false(is_masked_bool(factor("true")))
-  # numeric
-  expect_false(is_masked_bool(c(1, 0)))
-})
-
-
-test_that("is_masked_bool(): FALSE for empty or all-NA character vectors", {
-  # empty character
-  expect_false(is_masked_bool(character(0)))
-  # all NAs
-  expect_false(is_masked_bool(c(NA_character_, NA_character_)))
-  # empty strings
-  expect_false(is_masked_bool(c("", "")))
-  expect_false(is_masked_bool(c(NA_character_, "")))
-})
-
-
-test_that("is_masked_bool(): FALSE for mixed NA and non-matching values", {
-  expect_false(is_masked_bool(c(NA_character_, "no", NA_character_))) # non-matching present -> FALSE
-})
-
-
-
-# bind_latlon() ---------------------------------------------
-
-test_that("bind_latlon() correctly attaches lon/lat for longlat sf object", {
-  coords <- data.frame(X = c(10, 20), Y = c(-5, 15))
-  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 4326)
-  pts_new <- bind_latlon(pts)
-  expect_true(all.equal(pts_new$lon, coords$X))
-  expect_true(all.equal(pts_new$lat, coords$Y))
-})
-
-
-test_that("bind_latlon() ataches lon/lat but original projection is kept", {
-  coords <- data.frame(X = c(500000, 400000), Y = c(4649776, 4650000))
-  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 32633)
-  pts_new <- bind_latlon(pts)
-  
-  expect_contains(names(pts_new), c("lat", "lon"))
-  expect_equal(sf::st_crs(pts_new), sf::st_crs(pts))
-  
-  # Coordinates must be numeric lat/lon
-  expect_type(pts_new$lon, "double")
-  expect_type(pts_new$lat, "double")
-  expect_equal(length(pts_new$lon), 2)
-})
-
-
-# Overwrites existing lon/lat columns
-test_that("bind_latlon() overwrites existing lon/lat columns", {
-  coords <- data.frame(X = 0, Y = 0, lon = NA, lat = NA)
-  pts <- st_as_sf(coords, coords = c("X", "Y"), crs = 4326)
-  pts_new <- bind_latlon(pts)
-  expect_false(any(is.na(pts_new$lon)))
-  expect_false(any(is.na(pts_new$lat)))
-})
 
