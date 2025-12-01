@@ -233,7 +233,7 @@ test_that("Data posted and retrieved as expected: fetch obs by subject ID", {
     move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) |> 
     slice(1:100)
   
-  posting_dttm <- now() - seconds(30)
+  posting_dttm <- now() - seconds(10)
   
   expect_no_error(
     ra_post_obs(
