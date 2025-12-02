@@ -457,9 +457,7 @@ fetch_hist <- function(api_base_url,
     include_details = include_details,
     page_size = page_size
   ) 
-  
-  # format fetched data
-  obs_cluster_actv <- clean_obs(obs_cluster_actv)
+
   
   # Ensure fetched obs are strictly from active clusters 
   if(nrow(obs_cluster_actv) > 0){
@@ -484,10 +482,7 @@ fetch_hist <- function(api_base_url,
     include_details = include_details,
     page_size = page_size
   )
-  
-  # format fetched observations data appropriately
-  obs_cluster_non_excluded <- clean_obs(obs_cluster_non_excluded)
-  
+
 
   # Important notes: 
   # (1) Change in ER to accommodate the map display of ACTIVE cluster, which are
@@ -870,9 +865,7 @@ get_obs <- function(api_base_url,
       obs <- obs |>
         # Drop the main observation_details col
         dplyr::select(-"observation_details") |>
-        dplyr::bind_cols(observation_details_out) |> 
-        # ensure boolean-type columns "masked" as character are coerced to logicals
-        dplyr::mutate(dplyr::across(dplyr::where(is_masked_bool), as.logical))
+        dplyr::bind_cols(observation_details_out)
     }
 
     # Append the current page of results to the list
@@ -886,7 +879,7 @@ get_obs <- function(api_base_url,
   
   cli::cli_progress_done()
   
-  # discard empty lest elements 
+  # discard empty list elements 
   all_results <- purrr::compact(all_results)
   
   # Combine all results into a data frame
@@ -897,8 +890,12 @@ get_obs <- function(api_base_url,
     data.frame()
   }
   
-  # ensure any duplicates are dropped
-  dplyr::distinct(combined_obs)
+  # final prep
+  combined_obs |> 
+    # ensure any duplicates are dropped
+    dplyr::distinct() |> 
+    # sanitise data
+    clean_obs()
 }
 
 
@@ -2497,7 +2494,8 @@ convert_na_string <- function(x) {
 }
 
 
-# Cleaning observations data fetched from ER into amenable format
+
+# Sanitise observations data fetched from ER into amenable format
 clean_obs <- function(obs_dt){
   
   if(nrow(obs_dt) == 0) return(obs_dt)
