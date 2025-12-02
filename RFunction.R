@@ -2356,7 +2356,8 @@ coerce_col_types <- function(data, ref_data){
     data.frame(
       col_name = col,
       ref_cls = class(ref_vct)[[1]], # top-level class in reference dataset
-      ref_units = ifelse(inherits(ref_vct, "units"), units::deparse_unit(ref_vct), NA)
+      ref_units = ifelse(inherits(ref_vct, "units"), units::deparse_unit(ref_vct), NA),
+      trg_cls = class(trg_vct)[[1]]
     )
   }) |> 
     purrr::list_rbind()
@@ -2364,7 +2365,7 @@ coerce_col_types <- function(data, ref_data){
   # Coerce classes of columns of target dataset. Currently only dealing with 
   # `<units>`, `<POSIXT`> and `<integer64>`
   mutual_cols_prof |> 
-    purrr::pwalk(function(col_name, ref_cls, ref_units){
+    purrr::pwalk(function(col_name, ref_cls, ref_units, trg_cls){
       
       if (ref_cls == "units"){
         # convert to numeric if vector is all NAs
@@ -2381,7 +2382,12 @@ coerce_col_types <- function(data, ref_data){
         
         data[[col_name]] <<- bit64::as.integer64(data[[col_name]])
         
-      } 
+      } else if(ref_cls == "character" && trg_cls == "numeric"){
+        
+        data[[col_name]] <<- as.character(data[[col_name]])
+        
+      }
+      
     })
   
   data
