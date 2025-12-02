@@ -16,6 +16,56 @@ if(rlang::is_interactive()){
 
 
 
+# coerce_col_types() -----------------------------------------------------
+
+test_that(" coerce_col_types() works as expected", {
+  
+  dt <- tibble::tibble(
+    a = 1:5,
+    b = letters[1:5],
+    c = bit64::as.integer64(6:10),
+    d = units::set_units(11:15, "m/s"),
+    e = seq.POSIXt(as.POSIXct("2025-05-01 12:03:01"), as.POSIXct("2025-05-05 09:03:01"), length.out = 5),
+    g = units::set_units(21:25, "degrees"),
+    h = units::set_units(51:55, "m"),
+    i = as.character(1000:1004)
+  )
+  
+  dt_2 <- tibble::tibble(
+    b = letters[1:2],
+    c =  11:12,
+    d = 21:22,
+    e = c("2021-10-01 12:03:01", "2021-10-01 12:10:01"),
+    f = factor(c(8, 9)),
+    # test handling of NA
+    g = NA_character_,
+    h = units::set_units(2:3, "km"),
+    i = c(300,301)
+  )
+  
+  out <- coerce_col_types(dt_2, dt)
+  
+  ### Covered columns ------
+  
+  # common cols between reference and target datasets have identical classes
+  expect_equal(class(dt$b), class(out$b))
+  expect_equal(class(dt$c), class(out$c))
+  expect_equal(class(dt$d), class(out$d))
+  expect_equal(class(dt$e), class(out$e))
+  expect_equal(class(dt$i), class(out$i))
+  
+  ### units columns ------
+  #### numeric target coerced to same units as reference
+  expect_equal(units::deparse_unit(dt$d), units::deparse_unit(out$d))
+  #### NA_character_ target handled accordingly
+  expect_equal(units::deparse_unit(dt$g), units::deparse_unit(out$g))
+  #### units in target converted to units in reference
+  expect_equal(units::deparse_unit(dt$h), units::deparse_unit(out$h))
+  
+})
+
+
+
 # is_masked() --------------
 
 test_that("is_masked(): errors when option `what` is invalid", {
@@ -54,7 +104,7 @@ test_that("is_masked(): FALSE for non-character inputs", {
 
 
 
-### Boolean case --------
+## Boolean case --------
 test_that("is_masked() - bool: TRUE when all non-NA character elements are whole-word 'true' or 'false' (any case)", {
   expect_true(is_masked(c("true", "FALSE"), what = "bool"))
   # NA ignored, remaining matches -> TRUE
@@ -79,7 +129,7 @@ test_that("is_masked() - bool: FALSE for mixed NA and non-matching values", {
 })
 
 
-### Numeric case --------
+## Numeric case --------
 test_that("is_masked() - num: TRUE when all non-NA character elements are coercible to numeric", {
   expect_true(is_masked(c("1", "2.3", "2E3"), what = "num"))
   # NA ignored, remaining matches -> TRUE
@@ -102,7 +152,7 @@ test_that("is_masked() - num: FALSE if ANY non-NA char element NOT coercible to 
 
 
 
-## convert_na_string() -----------------
+# convert_na_string() -----------------
 
 test_that("convert_na_string() works as expected", {
   
@@ -129,7 +179,7 @@ test_that("convert_na_string() works as expected", {
 
 
 
-## clean_obs() -----------------
+# clean_obs() -----------------
 
 test_that("clean_obs(): works as expected", {
   
