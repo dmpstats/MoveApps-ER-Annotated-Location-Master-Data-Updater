@@ -694,13 +694,14 @@ ra_post_obs <- function(data,
       # Send request 
       req |> 
         httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |> 
-        # apply retry, adding 502 "Bad Gateway" and 504 "Gasteway Timeout" as a
+        # apply retry, adding 502 "Bad Gateway" and 504 "Gateway Timeout" as a
         # transient error (429 and 503 are standard transients); 20s backoff
         # period
         httr2::req_retry(
           max_tries = 5,
           is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
           backoff = \(resp) 20
+        ) |>
         httr2::req_perform() |> 
         resp_status()
 
