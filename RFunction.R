@@ -873,7 +873,9 @@ get_obs <- function(api_base_url,
       obs <- obs |>
         # Drop the main observation_details col
         dplyr::select(-"observation_details") |>
-        dplyr::bind_cols(observation_details_out)
+        dplyr::bind_cols(observation_details_out) |> 
+        # sanitise data
+        clean_obs()
     }
 
     # Append the current page of results to the list
@@ -901,9 +903,7 @@ get_obs <- function(api_base_url,
   # final prep
   combined_obs |> 
     # ensure any duplicates are dropped
-    dplyr::distinct() |> 
-    # sanitise data
-    clean_obs()
+    dplyr::distinct()
 }
 
 
