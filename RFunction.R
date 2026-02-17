@@ -2239,8 +2239,8 @@ fill_track_gaps <- function(clustered_dt,
     # day to ensure leading and trailing track points are included
     group_by(er_subject_name) |> 
     reframe(
-      query_from = min(cluster_start) - lubridate::days(1),
-      query_to = max(cluster_end) + lubridate::days(1)
+      query_from = min(cluster_start, na.rm = TRUE) - lubridate::days(1),
+      query_to = max(cluster_end, na.rm = TRUE) + lubridate::days(1)
     )
   
   ## Get and bind subject IDs, required for querying obs via GET
