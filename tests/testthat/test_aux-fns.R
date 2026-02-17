@@ -207,7 +207,8 @@ test_that("clean_obs(): works as expected", {
     f = c("true", "nottrue", "maybefalse", "false", "nottrue"),
     g = rep(NA_character_, 5),
     h = seq.POSIXt(Sys.time(), Sys.time() + 3, length.out = 5),
-    i = c("ar", "3", "NA", "<NA>", "")
+    i = c("ar", "3", "NA", "<NA>", ""),
+    track_id = ceiling(runif(5, 3000, 5000))
   )
   
   expect_no_error(
@@ -230,6 +231,22 @@ test_that("clean_obs(): works as expected", {
   expect_true(is.character(out$b))
   expect_true(all(is.na(out$g)))
   expect_true(is.POSIXct(out$h))
+  
+  # column track_id converted to character, if present
+  expect_true(is.character(out$track_id))
+
+  out <- dt |> 
+    mutate(track_id = logical(5)) |> 
+    clean_obs()
+  
+  expect_true(is.character(out$track_id))
+  
+  out <- dt |> 
+    mutate(track_id = NA) |> 
+    clean_obs()
+  
+  expect_true(is.character(out$track_id))
+  
   
 })
 
