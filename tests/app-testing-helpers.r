@@ -60,7 +60,17 @@ delete_obs <- function(obs_ids, token){
 }
 
 
+# /////////////////////////////////////////////////////////////////////////////
+# call back function to use in req_perform_iterative() to handle ER pagination in GET requests
+next_req <- function(resp, req){
+  next_url <- resp_body_json(resp)$data[["next"]]
+  if (is.null(next_url))
+    return(NULL)
+  req |> req_url(next_url)
+}  
 
+
+# /////////////////////////////////////////////////////////////////////////////
 get_sources <- function(api_base_url, token){
   
   api_endpnt <- file.path(api_base_url, "sources")
@@ -72,12 +82,22 @@ get_sources <- function(api_base_url, token){
       "Content-Type" = "application/json"
     )
   
-  httr2::req_perform(req) |> 
-    resp_body_json() |> 
-    pluck("data") |> 
-    pluck("results") 
-}
+  httr2::req_perform_iterative(
+    req = req, 
+    next_req = next_req,  
+    max_reqs = Inf
+  ) |> 
+    purrr::map(
+      .f = function(resp){
+        resp |> 
+          httr2::resp_body_json() |>
+          purrr::pluck("data") |>
+          purrr::pluck("results")
+      }) |>
+    purrr::list_c()
   
+}
+
 
 
 delete_sources <- function(src_ids, api_base_url, token){
@@ -100,11 +120,11 @@ delete_sources <- function(src_ids, api_base_url, token){
     #req_dry_run(req)
     
     req |> 
-      httr2::req_retry(
-        max_tries = 5,
-        is_transient = \(resp) resp_status(resp) %in% c(429, 503, 504),
-        backoff = \(resp) 10
-      ) |>
+      # httr2::req_retry(
+      #   max_tries = 5,
+      #   is_transient = \(resp) resp_status(resp) %in% c(429, 503, 504),
+      #   backoff = \(resp) 10
+      # ) |>
       req_perform() |> 
       httr2::resp_status()
     
@@ -142,14 +162,14 @@ delete_subjects <- function(subj_ids, api_base_url, token){
 # Erases all sources, related observations and assigned subjects associated to the
 # specified source `provider`. Essentially performs a deep clean on ER's
 # "Observations" section, allowing for clean testing
-deep_clean_obs <- function(api_base_url, token, provider = "moveapps_ann_locs", sources_to_keep){
+deep_clean_obs <- function(api_base_url, token, provider_key = "moveapps_ann_locs", sources_to_keep){
   
   cli::cli_inform("Cleaning Up sources, observations and subjects in ER")
   
-  # get sources adnd their IDs
+  # get sources and their IDs
   obs_sources <- get_sources(api_base_url, token)
   
-  source_ids <- purrr::keep(obs_sources, \(s) s$provider == provider) |> 
+  source_ids <- purrr::keep(obs_sources, \(s) s$provider == provider_key) |> 
     purrr::map(~ data.frame(
       source_id = .x$id, 
       manufacturer_id = .x$manufacturer_id, 
@@ -161,12 +181,24 @@ deep_clean_obs <- function(api_base_url, token, provider = "moveapps_ann_locs", 
   # get subjects assigned to sources
   source_subject <- purrr::map(
     source_ids$source_id, function(x){
-      sub_dets <- get_source_subjects(x, api_base_url, token)[[1]]
-      data.frame(
-        source_id = x, 
-        subject_id = sub_dets$id,
-        subject_name = sub_dets$name
-      )
+      source_subjs <- get_source_subjects(x, api_base_url, token)
+      
+      purrr::map(source_subjs, function(sbj){
+        if(length(sbj) == 0){
+          data.frame(
+            source_id = x, 
+            subject_id = NA,
+            subject_name = NA
+          )    
+        }else{
+          data.frame(
+            source_id = x, 
+            subject_id = sbj$id,
+            subject_name = sbj$name
+          )    
+        }
+      }) |> 
+        purrr::list_rbind()
     }) |> 
     purrr::list_rbind()
   
