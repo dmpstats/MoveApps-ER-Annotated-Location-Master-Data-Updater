@@ -1037,7 +1037,6 @@ get_provider_id <- function(provider_key, api_base_url, token){
 #'  - location columns must be named "lat"/"lon"
 #'  - Currently this Patch function is (deliberately) limited to only update 
 #'  the following Obs fields: "locations", "additional" and "exclusion_flags"
-#'   
 patch_obs <- function(data,
                       additional_cols = NULL,
                       api_base_url, 
@@ -1049,9 +1048,6 @@ patch_obs <- function(data,
     return(invisible())
   }
   
-  # if ("er_obs_id" %notin% names(data)) {
-  #   cli::cli_abort("{.arg data} must contain column {.val er_obs_id} to match observations to existing records.")
-  # }
   
   req_cols <- c(additional_cols, "er_obs_id", "cluster_status", "lat", "lon")
   miss_cols <- req_cols[req_cols %notin% names(data)]
@@ -1081,10 +1077,11 @@ patch_obs <- function(data,
   
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
-
-  results <- data |> 
+  
+  # generate list of PATCH requests - one per observation
+  patch_req_list <- data |> 
     dplyr::group_split(er_obs_id) |> 
-    purrr::map_int(
+    purrr::map(
       function(obs){
         api_endpnt <- file.path(api_base_url, "observation", obs$er_obs_id)
         
@@ -1096,16 +1093,15 @@ patch_obs <- function(data,
           # essentially, drop additional field if none is passed
           purrr::compact()
         
-        req <- httr2::request(api_endpnt) |> 
+        httr2::request(api_endpnt) |> 
           httr2::req_auth_bearer_token(token) |> 
           httr2::req_method("PATCH") |> 
           httr2::req_headers(
             "Accept" = "application/json",
             "Content-Type" = "application/json"
           ) |> 
-          httr2::req_body_json(body_list)
-        
-        req |> 
+          httr2::req_body_json(body_list) |> 
+          httr2::req_throttle(capacity = 2000, fill_time_s = 60) |> 
           httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |> 
           # apply retry, adding 502 "Bad Gateway" as a transient error (429 and
           # 503 are standard transients); 30s backoff period
@@ -1113,21 +1109,17 @@ patch_obs <- function(data,
             max_tries = 5,
             is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
             backoff = \(resp) 30
-          ) |>
-          httr2::req_perform() |> 
-          httr2::resp_status()
-        
-      }, 
-      .progress = list(format = "Updating observation {pb_current}/{pb_total} [{pb_rate}] | {cli::pb_eta_str}")
-    )
+          )
+      })
   
+  # Perform PATCH requests in parallel
+  resps <- httr2::req_perform_parallel(patch_req_list, max_active = 10)
+     
   ## Log results ------------------------------------------------------
-  successful_requests <- sum(results %in% c(200, 201))
-  total_requests <- length(results)
+  successful_requests <- resps |> httr2::resps_successes() |> length()
   logger.info(glue::glue("{symbol$tick} {successful_requests} of {total_requests} observations updated successfully."))
-
+  
 }
-
 
 
 
