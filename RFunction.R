@@ -1794,6 +1794,12 @@ merge_and_update <- function(matched_dt,
   
   ## Rename ER-based key "Observation" columns in historic dataset 
   matched_hist_dt <- matched_hist_dt |> 
+    # 1st ensure that, if key cols are present in hist dataset (because they've
+    # been chosen by user for storage via top-level `store_cols_str`), they
+    # are dropped before renaming
+    dplyr::select(
+      !dplyr::any_of(c("individual_local_identifier", timestamp_col))
+    ) |> 
     dplyr::rename(
       individual_local_identifier = er_subject_name,
       {{timestamp_col}} := recorded_at
