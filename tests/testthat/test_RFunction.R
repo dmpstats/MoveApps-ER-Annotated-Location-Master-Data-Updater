@@ -480,7 +480,11 @@ test_that("get_hist() works as expected", {
   )
   
   # delete test observations from ER
-  delete_obs(hist_dt$er_obs_id, er_tokens$standrews.dev$brunoc)
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
   
 })
 
