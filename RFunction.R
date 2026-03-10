@@ -530,8 +530,8 @@ fetch_hist <- function(api_base_url,
   
   sources_info <- sources |> 
     purrr::map(function(s){
-      #browser()
       
+      # retrieve source details
       source_dets <- get_source_details(s, api_base_url, token) |> 
         purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
       
@@ -993,6 +993,7 @@ get_provider_id <- function(provider_key, api_base_url, token){
   req_srcprv <- httr2::request(req_url) |> 
     httr2::req_url_query(page_size = 1000) |> 
     httr2::req_auth_bearer_token(token) |>
+    httr2::req_headers("accept" = "application/json")
   #req_src |> req_dry_run()
   
   # extract source providers from API response
@@ -1804,7 +1805,6 @@ merge_and_update <- function(matched_dt,
       individual_local_identifier = er_subject_name,
       {{timestamp_col}} := recorded_at
     )
-
   
   # Coerce classes of columns in historic data to meet those in new data 
   matched_hist_dt <- coerce_col_types(matched_hist_dt, new_dt)
@@ -2315,7 +2315,6 @@ fill_track_gaps <- function(clustered_dt,
   
   ## Get and bind subject IDs, required for querying obs via GET
   subject_ids <- get_subject_ids(api_base_url, token)
-  
   query_subjects <- dplyr::left_join(query_subjects, subject_ids, by = "er_subject_name")
   
   ## Perform Obs GET request, iteratively over subjects
