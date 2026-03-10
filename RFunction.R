@@ -1117,6 +1117,7 @@ patch_obs <- function(data,
      
   ## Log results ------------------------------------------------------
   successful_requests <- resps |> httr2::resps_successes() |> length()
+  total_requests <- length(patch_req_list)
   logger.info(glue::glue("{symbol$tick} {successful_requests} of {total_requests} observations updated successfully."))
   
 }
