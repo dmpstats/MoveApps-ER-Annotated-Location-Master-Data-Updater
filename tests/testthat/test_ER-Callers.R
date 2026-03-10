@@ -4,7 +4,6 @@ library(dplyr)
 library(rlang)
 library(httr2)
 library(lubridate)
-library(lubridate)
 #library(sf)
 #library(here)
 
@@ -266,14 +265,140 @@ test_that("Data posted and retrieved as expected: fetch obs by subject ID", {
   )
   
   # Delete test observations from ER
-  # get All obs, for cleaning
-  ER_obs <- get_obs(
+  deep_clean_obs(
     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
     token = er_tokens$standrews.dev$brunoc, 
-    created_after = posting_dttm
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
   )
-  # delete
-  delete_obs(ER_obs$id, token = er_tokens$standrews.dev$brunoc)
+  
+})
+
+
+
+
+
+
+
+test_that("Data posted and retrieved as expected: fetch obs by Source provider", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  ## Dataset to post under "moveapps_ann_locs" source provider
+  dt_moveapps_src <- test_sets$nam_2 |> 
+    mutate(
+      cluster_status = if_else(clust_id == "NAM.3", "CLOSED", "ACTIVE"),
+      track_id = move2::mt_track_id(test_sets$nam_2)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id)
+  
+  #posting_dttm <- now() - seconds(10)
+  
+  expect_no_error(
+    ra_post_obs(
+      data = dt_moveapps_src,
+      tm_id_col = mt_time_column(dt),
+      additional_cols = c(store_cols, cluster_cols),
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc,
+      provider_key = "moveapps_ann_locs"
+    )
+  )
+  
+  
+  ## Dataset to post under "moveapps_ann_locs" source provider
+  dt_test_src <- test_sets$nam_1 |> 
+    mutate(
+      cluster_status = if_else(clust_id == "NAM.3", "CLOSED", "ACTIVE"),
+      track_id = move2::mt_track_id(test_sets$nam_1)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id)
+  
+  #posting_dttm <- now() - seconds(10)
+  
+  expect_no_error(
+    ra_post_obs(
+      data = dt_test_src,
+      tm_id_col = mt_time_column(dt),
+      additional_cols = c(store_cols, cluster_cols),
+      api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+      token = er_tokens$standrews.dev$brunoc, 
+      provider_key = "test_source_provider"
+    )
+  )
+  
+  
+  ## get provider source IDs
+  moveapps_prov_id <- get_provider_id(
+    provider_key = "moveapps_ann_locs", 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  test_prov_id <- get_provider_id(
+    provider_key = "test_source_provider", 
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  
+  # check if filter returns moveapps obs as expected
+  ER_obs_moveapps_src <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sourceprovider_id = moveapps_prov_id
+  )
+  
+  expect_true(nrow(ER_obs_moveapps_src) == nrow(dt_moveapps_src))
+  
+  expect_equal(
+    ER_obs_moveapps_src |> select(lat, lon, behav) |> arrange(lat) |> as.data.frame() |> as.matrix(),
+    dt_moveapps_src |> as.data.frame() |> select(lat, lon, behav) |> arrange(lat)|> as.matrix()
+  )
+  
+  
+  
+  # check if filter returns test obs as expected
+  ER_obs_test_src <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sourceprovider_id = test_prov_id
+  )
+  
+  expect_true(nrow(ER_obs_test_src) == nrow(dt_test_src))
+  
+  expect_equal(
+    ER_obs_test_src |> select(lat, lon, behav) |> arrange(lat) |> as.data.frame() |> as.matrix(),
+    dt_test_src |> as.data.frame() |> select(lat, lon, behav) |> arrange(lat)|> as.matrix()
+  )
+  
+  
+  # check if all obs return, for all source providers
+  ER_obs <- get_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc
+  )
+  
+  
+  
+  # clean up ER (sources, subjects & obs)
+  
+  ## those under "moveapps_ann_locs"
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    provider_key = "moveapps_ann_locs",
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+  ## those under "test_source_provider"
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    provider_key = "test_source_provider",
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
   
 })
 

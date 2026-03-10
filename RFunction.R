@@ -428,7 +428,6 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #' Either a data frame, or a NULL object under the following conditions in ER's Observation Table:
 #'  - No records (i.e. 0 observations)
 #'  - Absence of attribute "cluster_uuid" in retrieved data
-#'  - All observations are in CLOSED clusters
 #'  
 #' Note: some ER-origin attributes are renamed to ensure compatibility with original 
 #'   `<move2>` data
@@ -446,6 +445,9 @@ fetch_hist <- function(api_base_url,
   
   # Retrieve observations ---------------------------------------
   
+  # get provider UUID from its key
+  provider_id <- get_provider_id(provider_key, api_base_url, token)
+  
   # Get ALL observations in active clusters up to max_date
   obs_cluster_actv <- get_obs(
     api_base_url = api_base_url, 
@@ -455,6 +457,7 @@ fetch_hist <- function(api_base_url,
     max_date = max_date, 
     created_after = NULL,
     include_details = include_details,
+    sourceprovider_id = provider_id,
     page_size = page_size
   ) 
 
@@ -479,10 +482,10 @@ fetch_hist <- function(api_base_url,
     min_date = unclust_min_date, 
     max_date = max_date, 
     created_after = NULL,
+    sourceprovider_id = provider_id,
     include_details = include_details,
     page_size = page_size
   )
-
 
   # Important notes: 
   # (1) Change in ER to accommodate the map display of ACTIVE cluster, which are
@@ -522,7 +525,7 @@ fetch_hist <- function(api_base_url,
   
   # Retrieve required complementary data ------------------------------------------
   # Get manufacturer_id/tag_id, subject_name/individual_local_identifier 
-  # and provider key (see below) for each source.
+  # and provider key for each source.
   sources <- unique(obs$source)
   
   sources_info <- sources |> 
@@ -554,14 +557,8 @@ fetch_hist <- function(api_base_url,
     purrr::list_rbind(names_to = "source")
   
   
-  # the GET query on non-active is oblivious to the obs source provider, so to
-  # avoid duplicates from subjects/tags included in more than one source
-  # provider (e.g. fed simultaneously from our MoveApps Workflow and a dedicated
-  # MoveBank feed), we need to keep obs linked to the specified `provider_key`.
-  # So, once we bind the provider key, we filter out obs tied to other source
-  # providers
-  obs <- dplyr::left_join(obs, sources_info, by = "source") |> 
-    filter(provider == provider_key)
+  # append source details to obs
+  obs <- dplyr::left_join(obs, sources_info, by = "source")
   
   
   # Process for output --------------------------------------------------------
@@ -718,6 +715,7 @@ ra_post_obs <- function(data,
 
 
 
+
 # //////////////////////////////////////////////////////////////////////////////
 #' Perform observations GET requests to EarthRanger
 #' 
@@ -734,8 +732,11 @@ ra_post_obs <- function(data,
 #' @param created_after `<POSIXt/POSIXct/POSIXlt>`
 #' @param filter integer, used to filter the retrieval of observations based on
 #'   a exclusion flag value
+#' @param subject_id character, the UUID of the subject of interest.
+#' @param sourceprovider_id character, the UUID of the source provider of
+#'   interest.
 #' @param include_details logical, whether to retrieve data stored as
-#'   "Additional" data in ER
+#'   "Additional" data in ER.
 #' @param page_size Integer. Number of records to retrieve per page. Defaults to
 #'   5000. Larger values may reduce request frequency but can increase memory
 #'   usage.
@@ -747,6 +748,7 @@ get_obs <- function(api_base_url,
                     created_after = NULL, 
                     filter = NULL, 
                     subject_id = NULL,
+                    sourceprovider_id = NULL,
                     include_details = TRUE, 
                     page_size = 1000){
   
@@ -770,8 +772,13 @@ get_obs <- function(api_base_url,
       cli::cli_abort("{.arg min_date} must be {.cls POSIXt}")
     }
     min_date <- format(min_date, "%Y-%m-%d %X%z")
+    
+  } else if(not_null(sourceprovider_id)){ 
+    # streamline fetch using src provider ID when `min_date` is null
+    # overwrite `min_date` default of last 16 days (as per Jes email, 23/02/2026)
+    min_date <- format(as.POSIXct("1950-01-01"), "%Y-%m-%d %X%z")
   }
-  
+
     
   ## `max_date`
   if(not_null(max_date)){
@@ -810,7 +817,9 @@ get_obs <- function(api_base_url,
         until = max_date,
         created_after = created_after,
         subject_id = subject_id,
+        sourceprovider_id = sourceprovider_id,
         page_size = page_size,
+        #use_cursor = "true",
         include_details = tolower(as.character(include_details)) # Convert logical to string
       ) |>
       httr2::req_auth_bearer_token(token) |> 
@@ -949,6 +958,56 @@ get_source_subjects <- function(src, api_base_url, token){
     httr2::resp_body_json() |> 
     purrr::pluck("data")
 }
+
+
+
+# ////////////////////////////////////////////////////////////////////////////////////////////
+#' Helper to get the source provider ID corresponding to a given source provider natural key
+#'
+#' @param provider_key A single string, the source provider Natural Key
+#' @param api_base_url A single string.
+#' @param token A single string (bearer token).
+#'
+#' @returns 
+#' A single string representing the source provider UUID. Returns `NULL` if no
+#' source provider matching `provider_key` is found. If multiple are found, the
+#' function will raise an error.
+#' 
+get_provider_id <- function(provider_key, api_base_url, token){
+
+  req_url <- file.path(api_base_url, "sourceproviders")
+
+  # request source providers in instance
+  req_srcprv <- httr2::request(req_url) |> 
+    httr2::req_url_query(page_size = 1000) |> 
+    httr2::req_auth_bearer_token(token) |>
+  #req_src |> req_dry_run()
+  
+  # extract source providers from API response
+  res_srcprvs <- req_srcprv |>
+    #httr2::req_error(~FALSE)|>
+    httr2::req_perform() |>
+    httr2::resp_body_json() |>
+    purrr::pluck("data") |> 
+    purrr::pluck("results")
+  
+  # filter source provider UUID for the specified natural key
+  srcprv_id <- purrr::keep(res_srcprvs, ~ .x[["provider_key"]] == provider_key) |>
+    purrr::map_chr(~.x[["id"]])
+  
+  if(length(srcprv_id) == 0){
+    return(NULL)
+    #cli::cli_abort("No Source Provider UUID found for {.arg provider_key} {.val {provider_key}}.")
+  } else if (length(srcprv_id) > 1) {
+    cli::cli_abort(c(
+      "Ambiguous Source Provider UUIDs detected for {.arg provider_key} {.val {provider_key}}.",
+      "x" = "Each Source Provider UUID must have a unique Natural Key."
+    ))
+  }
+  
+  srcprv_id
+}
+
 
 
 
@@ -2285,9 +2344,8 @@ fill_track_gaps <- function(clustered_dt,
   # for marking membership to "ACTIVE" clusters, so both  non-clustered and
   # those members to "CLOSED" clusters. 
   # *In addition*, the GET query is oblivious to the obs source provider, so to
-  # avoid duplicates from subjects included in more than one source provider
-  # (e.g. fed simultaneously from our MoveApps Workflow and a dedicated
-  # MoveBank feed), we need to keep obs linked to the specified `provider_key`.
+  # avoid duplicates from subjects included in more than one source provider,
+  # it's kosher keep obs under specified `provider_key`.
   # So, the next steps broadly involve:
   #  - filter non-clustered obs observations 
   #  - get and bind source details for obs in retrieved dataset
@@ -2306,8 +2364,8 @@ fill_track_gaps <- function(clustered_dt,
           dplyr::as_tibble()
       }) |> 
         purrr::list_rbind() |> 
-        select(id, manufacturer_id, provider) |> 
-        rename(source = id)
+        dplyr::select(id, manufacturer_id, provider) |> 
+        dplyr::rename(source = id)
       
       ## Bind source details and keep observations for intended source provider
       obs_nonclust <- left_join(obs_nonclust, source_dets, by = "source") |> 
