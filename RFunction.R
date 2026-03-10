@@ -2475,26 +2475,43 @@ coerce_col_types <- function(data, ref_data){
 # ////////////////////////////////////////////////////////////////////////////////
 #' helper to fetch subject_id and subject_name of all the subjects present in
 #' ER's Observations table
-#' NB: Unclear whether there is a potential issue if the response starts
-#' returning paginated results due to large number of subjects in ER. The
-#' alternative is to perform iterative request over specific subjects (see
-#' namesake function in "dev/deprecated_code")
 get_subject_ids <- function(api_base_url, token){
-
+  
   subjects_api_endpnt <- file.path(api_base_url, "subjects")
-
+  
   req_subj <- httr2::request(subjects_api_endpnt) |>
     httr2::req_auth_bearer_token(token) |>
+    # force pagination, to allow for iterative requests below
+    httr2::req_url_query(page_size = 500) |> 
     httr2::req_headers("accept" = "application/json")
-
+  
   res_subj <- req_subj |>
-    httr2::req_perform() |>
-    httr2::resp_body_json() |>
-    purrr::pluck("data")
-
+    httr2::req_perform_iterative(
+      next_req = er_next_req,  
+      max_reqs = Inf
+    ) |> 
+    purrr::map(
+      .f = function(resp){
+        resp |> 
+          httr2::resp_body_json() |>
+          purrr::pluck("data") |>
+          purrr::pluck("results")
+      }) |>
+    purrr::list_c()
+  
   purrr::map(res_subj, ~ data.frame(er_subject_name = .x$name, er_subject_id = .x$id)) |>
     purrr::list_rbind()
 }
+
+
+# /////////////////////////////////////////////////////////////////////////////
+# Helper to use in req_perform_iterative() to handle ER pagination in GET requests
+er_next_req <- function(resp, req){
+  next_url <- resp_body_json(resp)$data[["next"]]
+  if (is.null(next_url))
+    return(NULL)
+  req |> req_url(next_url)
+}  
 
 
 

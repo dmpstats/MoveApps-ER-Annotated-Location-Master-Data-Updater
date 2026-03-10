@@ -498,6 +498,51 @@ test_that("Data patched as expected", {
 
 
 
+# get_subject_ids()  -------------------------------------------------------------
+
+test_that("Subjects ID returned as expected", {
+  
+  store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+                  "sunset_timestamp", "temperature")
+  cluster_cols <- c("cluster_uuid", "cluster_status")
+  
+  dt <- test_sets$nam_2 |> 
+    mutate(
+      cluster_status = NA_character_,
+      cluster_uuid = NA_character_,
+      track_id = move2::mt_track_id(test_sets$nam_2)
+    ) |> 
+    move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id) 
+  
+  # store posting date-time for later reference for GET requests based on "created_after"
+  posting_dttm <- now() - seconds(10)
+  
+  # post data
+  ra_post_obs(
+    data = dt,
+    tm_id_col = mt_time_column(dt),
+    additional_cols = c(store_cols, cluster_cols),
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc#,
+  )
+  
+  out <- get_subject_ids(
+    "https://standrews.dev.pamdas.org/api/v1.0/", 
+    er_tokens$standrews.dev$brunoc
+  )
+
+  # posted subjects returned
+  expect_contains(out$er_subject_name, unique(dt$individual_local_identifier))  
+  
+  deep_clean_obs(
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token = er_tokens$standrews.dev$brunoc, 
+    sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+  )
+  
+})
+
+
 
 
 
@@ -505,7 +550,6 @@ test_that("Data patched as expected", {
 test_that("get_obs() dev testing", {
   
   skip()
-  
   
   # get obs annotated as members of "active" clusters
   test <- get_obs(
