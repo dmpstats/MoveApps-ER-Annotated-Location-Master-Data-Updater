@@ -535,14 +535,26 @@ fetch_hist <- function(api_base_url,
       source_dets <- get_source_details(s, api_base_url, token) |> 
         purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
       
-      subject_dets <- get_source_subjects(s, api_base_url, token)[[1]] |> 
-        purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
+      # retrieve details of subject assigned to source
+      subject_dets <- get_source_subjects(s, api_base_url, token)
       
-      if(length(subject_dets$name) > 1){
+      if(length(subject_dets) > 1){
         cli::cli_abort(c(
-          "Each `manufacturer_id` must be uniquely associated with a single subject.",
+          "Issue found while fecthing subject details from ER.",
+          x = "Each subject must be assigned to a single unique `manufacturer_id`.",
           x = "Detected a one-to-many relationship between `manufacturer_id` and `subject_name`, which is not currently allowed."
         ))
+      } else if(length(subject_dets) == 0){
+        cli::cli_abort(c(
+          "Issue found while fecthing subject details from ER.",
+          x = "Each subject must be assigned to a single unique `manufacturer_id`.",
+          x = "There is no subject assigned to `manufacturer_id` {.val {source_dets$manufacturer_id}} in ER's database."
+        ))
+      } else {
+        # 1-2-1 source to subject drop higher level and formats inner list to
+        # ensure correct formatting for tibble below (e.g. no empty nested lists)
+        subject_dets <- subject_dets[[1]] |>
+          purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))  
       }
       
       dplyr::tibble(
