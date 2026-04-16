@@ -2454,7 +2454,7 @@ coerce_col_types <- function(data, ref_data){
         
       } else if (ref_cls == "POSIXct"){
         
-        data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC")
+        data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC", truncated = 3)
         
       } else if (ref_cls == "integer64") {
         
