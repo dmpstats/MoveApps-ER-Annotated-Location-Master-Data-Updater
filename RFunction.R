@@ -1510,6 +1510,24 @@ match_sf_clusters <- function(hist_dt,
     ) |> 
     dplyr::distinct() # Ensure distinct matches
   
+  
+  # Second assessment of `Match type` on "Partial" master clusters.
+  # Identify "Partial" (double-matched) master clusters where all their
+  # points were assigned to a single new cluster in the observation-level matching
+  # step performed above (based on proximity to new cluster's centroid). 
+  # Re-classify these as "Full" matches.
+  final_matches <- final_matches |> 
+    dplyr::mutate(
+      `Match Type` = dplyr::replace_when(
+        `Match Type`,
+        # if a master cluster is exclusively matched to a single new cluster but
+        # is still tagged has "Partial", reclassify as "Full" match
+        dplyr::n() == 1 & `Match Type` == "Partial" ~ "Full"
+      ),
+      .by = master_cluster
+    )
+  
+  
   # Add to final_matches any new clusters that have no previous match
   unmatched_new_clusters <- new_centroids |> 
     data.frame() |> 
