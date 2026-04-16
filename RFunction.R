@@ -1977,7 +1977,8 @@ merge_and_update <- function(matched_dt,
               # Solution: drop row with "Full Match", which will force those obs
               # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
               #browser()
-              x <- filter(x, x$`Match Type` == "Full")
+              x <- dplyr::filter(x, `Match Type` == "Full")
+              
             } else if (identical(x$`Match Type`, c("Partial", "Partial"))){
               # Case 3: 2 old [2 Partials] -> 1 new
               # Found case was not actually a fusion event, but a double exact
@@ -1986,7 +1987,7 @@ merge_and_update <- function(matched_dt,
               # cluster without changes between consecutive runs. 
               # Solution: For the moment, we'll just keep the old cluster UUIDs,
               # but this might need re-assessment
-              x <- filter(x, x$master_cluster == cluster_uuid)
+              x <- dplyr::filter(x, master_cluster == cluster_uuid)
               
               if(nrow(x) == 2){
                 # Case 3b: 2 old [2 Partials] -> 1 new, but previous solution
@@ -2009,11 +2010,11 @@ merge_and_update <- function(matched_dt,
                   clust_to_keep <- clust_to_keep[1]
                 }
                 
-                x <- filter(x, x$master_cluster == clust_to_keep)
+                x <- dplyr::filter(x, master_cluster == clust_to_keep)
               }
             } else {
               #browser()
-              x <- filter(x, x$master_cluster == cluster_uuid)
+              x <- dplyr::filter(x, master_cluster == cluster_uuid)
               if(nrow(x) > 1) x <- dplyr::filter(x, n_pnts == max(n_pnts))
               if(nrow(x) > 1) x <- dplyr::slice(x, 1)
             }
