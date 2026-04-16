@@ -529,14 +529,16 @@ fetch_hist <- function(api_base_url,
   sources <- unique(obs$source)
   
   sources_info <- sources |> 
-    purrr::map(function(s){
+    purrr::map(function(src){
+      
+      #browser()
       
       # retrieve source details
-      source_dets <- get_source_details(s, api_base_url, token) |> 
+      source_dets <- get_source_details(src, api_base_url, token) |> 
         purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
       
       # retrieve details of subject assigned to source
-      subject_dets <- get_source_subjects(s, api_base_url, token)
+      subject_dets <- get_source_subjects(src, api_base_url, token)
       
       if(length(subject_dets) > 1){
         cli::cli_abort(c(
@@ -551,7 +553,7 @@ fetch_hist <- function(api_base_url,
           x = "There is no subject assigned to `manufacturer_id` {.val {source_dets$manufacturer_id}} in ER's database."
         ))
       } else {
-        # 1-2-1 source to subject drop higher level and formats inner list to
+        # 1-to-1 source to subject drop higher level and formats inner list to
         # ensure correct formatting for tibble below (e.g. no empty nested lists)
         subject_dets <- subject_dets[[1]] |>
           purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))  
