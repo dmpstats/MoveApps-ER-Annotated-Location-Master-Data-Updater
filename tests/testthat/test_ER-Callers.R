@@ -298,7 +298,7 @@ test_that("Data posted and retrieved as expected: fetch obs by Source provider",
   expect_no_error(
     ra_post_obs(
       data = dt_moveapps_src,
-      tm_id_col = mt_time_column(dt),
+      tm_id_col = mt_time_column(dt_moveapps_src),
       additional_cols = c(store_cols, cluster_cols),
       api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
       token = er_tokens$standrews.dev$brunoc,
@@ -320,7 +320,7 @@ test_that("Data posted and retrieved as expected: fetch obs by Source provider",
   expect_no_error(
     ra_post_obs(
       data = dt_test_src,
-      tm_id_col = mt_time_column(dt),
+      tm_id_col = mt_time_column(dt_moveapps_src),
       additional_cols = c(store_cols, cluster_cols),
       api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
       token = er_tokens$standrews.dev$brunoc, 
