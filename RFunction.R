@@ -714,7 +714,7 @@ ra_post_obs <- function(data,
           backoff = \(resp) 20
         ) |>
         httr2::req_perform() |> 
-        resp_status()
+        httr2::resp_status()
 
     }, 
     .progress = list(format = "Uploading batch nr. {pb_current}/{pb_total} [{pb_rate}]")# | {cli::pb_eta_str}")
