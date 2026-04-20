@@ -846,6 +846,13 @@ get_obs <- function(api_base_url,
       httr2::req_error(body =  \(resp){
         "Failed to request observations historical data."
       }) |> 
+      # apply retry, adding 400 "Bad Request" as a transient error (429
+      # and 503 are standard transients); 15s backoff period
+      httr2::req_retry(
+        max_tries = 8,
+        is_transient = \(resp) resp_status(resp) %in% c(400, 429, 503),
+        backoff = \(resp) 15
+      ) |>
       httr2::req_perform()
     
     # Parse the response -----------
