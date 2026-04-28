@@ -223,7 +223,7 @@ rFunction = function(data,
     active_days_thresh = active_days_thresh
   )
   
-  # extract UUIDs of clusters nullified due to fusion events
+  # extract UUIDs of clusters nullified due to fusion and collapsed events
   dispersed_cluster_uuid <- attr(merged_dt, "dispersed_cluster_uuid")
   
   # house-keeping
@@ -1456,8 +1456,7 @@ match_sf_clusters <- function(hist_dt,
   # Filter to double-matches, where an old cluster is matched to multiple new clusters
   double_matches <- matches |>
     dplyr::group_by(master_cluster) |>
-    dplyr::filter(dplyr::n() > 1
-    ) |>
+    dplyr::filter(dplyr::n() > 1) |>
     dplyr::ungroup()
   
   direct_matches <- matches |>
@@ -2002,7 +2001,7 @@ merge_and_update <- function(matched_dt,
   if (nrow(fusion_events) > 1) {
     
     # For each fusion event, we just want to retain one historical ID
-    logger.info("  |- Found fusion events, where multiple old clusters match to a single new cluster. Resolving")
+    logger.info("  |- Handling potential fusing events: multiple previous clusters match a single new cluster.")
     
     temp_tbl <- match_tbl |> 
       dplyr::group_by(new_cluster) |> 
@@ -2067,10 +2066,10 @@ merge_and_update <- function(matched_dt,
         }) |> 
       dplyr::bind_rows()
     
-    logger.info(sprintf(
-      "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
-      dplyr::n_groups(fusion_events)
-    ))
+    # logger.info(sprintf(
+    #   "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
+    #   dplyr::n_groups(fusion_events)
+    # ))
     
   } else {
     temp_tbl <- match_tbl
@@ -2146,6 +2145,7 @@ merge_and_update <- function(matched_dt,
   collapsed_cluster_uuids <- character(0)
   
   if(length(dropped_hist_clust) > 0){
+    
     collapsed_events <- merged_dt |> 
       as.data.frame() |> 
       dplyr::filter(cluster_uuid_hist %in% dropped_hist_clust) |> 
@@ -2160,20 +2160,24 @@ merge_and_update <- function(matched_dt,
     }
     
     collapsed_cluster_uuids <- collapsed_events$cluster_uuid_hist
+    logger.info("  |- Handling collapsed events: cluster points fully absorbed into neighbouring clusters.")
   }
   
-  ## Account for cluster reduction due to fusion and collapsing events
-  cluster_reduction <- length(fused_cluster_uuids) + length(collapsed_cluster_uuids)
+  ## Count dropped clusters (fused and collapsed)
+  n_dissolved <- length(fused_cluster_uuids) + length(collapsed_cluster_uuids)
   
-  ## Check number of clusters
-  if(nrow(clusters_merge) < (nrow(clusters_hist) - cluster_reduction)){
+  # Count added clusters
+  n_added <- length(setdiff(clusters_merge$cluster_uuid, clusters_hist$cluster_uuid))
+  
+  hist_vs_merge_size <- nrow(clusters_merge) - nrow(clusters_hist)
+  
+  ## Check clusters differential
+  if(hist_vs_merge_size != (n_added - n_dissolved)){
     cli::cli_abort(c(
       "Unexpectedly low number of clusters in merged data.",
-      x = "Merged data contains fewer clusters than the historical dataset.",
       i = "This suggests clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
-  
   
   ## check obs merge status 
   if(any(is.na(merged_dt$cluster_merge_status))){
