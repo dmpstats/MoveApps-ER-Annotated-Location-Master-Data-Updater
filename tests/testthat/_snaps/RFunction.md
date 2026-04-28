@@ -55,3 +55,19 @@
       [1m[33mError[39m in `rFunction()`:[22m
       [38;5;254m[33m![38;5;254m `lookback` must be an <integer>.[39m
 
+---
+
+    Code
+      rFunction(data = dt, api_hostname = "bla.co.uk", api_token = "XYZ")
+    Output
+      [INFO] Checking inputs
+      [INFO] Finished check on required columns in input data - all good!
+      [FATAL] Found missing `individual_local_identified` for at least one of the tracks in the input dataset.
+    Condition
+      [1m[33mError[39m in `rFunction()`:[22m
+      [38;5;254m[33m![38;5;254m Each track in input dataset must have a non-missing `individual_local_identifier` attribute.
+      [31m✖[38;5;254m The following tracks have missing values for `individual_local_identifier`:
+      [36m•[38;5;254m "GA_5404_mocky"
+      [36m•[38;5;254m "TO_6485_mocky"
+      [36mℹ[38;5;254m Please contact the data manager or person responsible for the tag deployment on Movebank to populate this attribute.[39m
+

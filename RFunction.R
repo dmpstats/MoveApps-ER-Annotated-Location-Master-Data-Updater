@@ -97,6 +97,25 @@ rFunction = function(data,
   )
  
   
+  ## Check non-NA values on individual_local_id (required for setting the subject's name)
+  trks_no_sbj_ids <- mt_track_data(data) |> 
+    rowwise() |> 
+    filter(is.na(individual_local_identifier))
+  
+  if(nrow(trks_no_sbj_ids) > 0){
+    
+    logger.fatal("Found missing `individual_local_identified` for at least one of the tracks in the input dataset.")
+    
+    cli::cli_abort(c(
+      "Each track in input dataset must have a non-missing `individual_local_identifier` attribute.",
+      x = "The following tracks have missing values for `individual_local_identifier`:",
+      setNames(
+        paste0("{.val ", trks_no_sbj_ids[[mt_track_id_column(data)]], "}"),
+        rep("*", nrow(trks_no_sbj_ids))
+      ),
+      i = "Please contact the data manager or person responsible for the tag deployment on Movebank to populate this attribute."
+    ))
+  }
   
   # Pre-processing ------------------------------------------------------
   logger.info("Performing top-level pre-processing.")

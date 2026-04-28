@@ -22,7 +22,7 @@ test_sets <- test_path("data/vult_unit_test_data.rds") |>
 # rFunction() --------------------------------------------------------------------------
 test_that("output is a valid move2 object", {
   
-  posting_dttm <- now() - seconds(30)
+  posting_dttm <- now() - seconds(10)
   
   input_dt <- test_sets$nam_1 |> slice(1:10)
   store_cols <- c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature")
@@ -111,6 +111,28 @@ test_that("Input validation works as expected", {
     ), 
     error = TRUE
   )
+  
+  
+  # track missing individual_local_identifier
+  dt <- test_sets$nam_1 |> 
+    mutate(track_id = paste0(individual_local_identifier, "_mocky")) |> 
+    mt_set_track_id("track_id") |> 
+    mutate(
+      individual_local_identifier = replace_when(
+        individual_local_identifier,
+        individual_local_identifier %in% c("GA_5404", "TO_6485") ~ NA_character_
+      )) |> 
+    mt_as_track_attribute("individual_local_identifier")
+  
+  expect_snapshot(
+    error = TRUE,
+    rFunction(
+      data = dt,
+      api_hostname = "bla.co.uk", 
+      api_token = "XYZ"
+    )
+  )
+  
   
   # # `store_cols_str`
   # rFunction(
