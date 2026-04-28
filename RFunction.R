@@ -971,6 +971,12 @@ get_source_details <- function(src, api_base_url, token){
   #req_src |> req_dry_run()
   
   req_src |> 
+    # apply retry to 400 as transient error; 5sec backoff
+    httr2::req_retry(
+      max_tries = 5,
+      is_transient = \(resp) resp_status(resp) %in% c(400),
+      backoff = \(resp) 5
+    ) |> 
     #httr2::req_error(~FALSE)|> 
     httr2::req_perform() |> 
     resp_body_json() |> 
@@ -993,6 +999,12 @@ get_source_subjects <- function(src, api_base_url, token){
   #req_src |> req_dry_run()
   
   req_src |> 
+    # apply retry to 400 as transient error; 5sec backoff
+    httr2::req_retry(
+      max_tries = 5,
+      is_transient = \(resp) resp_status(resp) %in% c(400),
+      backoff = \(resp) 5
+    ) |> 
     #httr2::req_error(~FALSE)|> 
     httr2::req_perform() |> 
     httr2::resp_body_json() |> 
