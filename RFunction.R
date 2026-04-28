@@ -2670,6 +2670,8 @@ clean_obs <- function(obs_dt){
       dplyr::across(dplyr::where(~ is_masked(.x, what = "bool")), as.logical),
       # handle character-masked numeric columns
       dplyr::across(dplyr::where(~ is_masked(.x, what = "num")), as.numeric),
+      # convert empty string columns to NA columns
+      dplyr::across(dplyr::where(~ all(!nzchar(.x, keepNA = TRUE), na.rm = TRUE)), \(x) NA),
       # if present, force column `track_id` to be of type character (from error in NCZ instance)
       dplyr::across(dplyr::any_of("track_id"), as.character)
     )

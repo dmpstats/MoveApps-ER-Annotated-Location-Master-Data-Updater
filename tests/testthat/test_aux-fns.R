@@ -208,6 +208,7 @@ test_that("clean_obs(): works as expected", {
     g = rep(NA_character_, 5),
     h = seq.POSIXt(Sys.time(), Sys.time() + 3, length.out = 5),
     i = c("ar", "3", "NA", "<NA>", ""),
+    empty = "",
     track_id = ceiling(runif(5, 3000, 5000))
   )
   
@@ -232,10 +233,19 @@ test_that("clean_obs(): works as expected", {
   expect_true(all(is.na(out$g)))
   expect_true(is.POSIXct(out$h))
   
+  # empty string columns converted to NA
+  expect_true(all(is.na(out$empty)))
+  
+  # expect only 2 NA columns  
+  expect_shape(
+    out |> dplyr::select(where(~all(is.na(.x)))), 
+    dim = c(5, 2)
+  )
+  
   # column track_id converted to character, if present
   expect_true(is.character(out$track_id))
 
-  out <- dt |> 
+  out <- dt |>
     mutate(track_id = logical(5)) |> 
     clean_obs()
   
