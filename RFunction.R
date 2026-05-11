@@ -994,6 +994,7 @@ get_source_subjects <- function(src, api_base_url, token){
   req_url <- file.path(api_base_url, "source", src, "subjects")
   
   req_src <- httr2::request(req_url) |>
+    httr2::req_url_query(include_inactive = TRUE) |> 
     httr2::req_auth_bearer_token(token) |> 
     httr2::req_headers("accept" = "application/json")
   #req_src |> req_dry_run()
