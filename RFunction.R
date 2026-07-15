@@ -183,7 +183,7 @@ rFunction = function(data,
     api_base_url = api_base_url,
     token = api_token, 
     unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback), 
-    page_size = 3000
+    page_size = 5000
   )
   
   
@@ -729,6 +729,7 @@ ra_post_obs <- function(data,
         # period
         httr2::req_retry(
           max_tries = 5,
+          retry_on_failure = TRUE,
           is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
           backoff = \(resp) 20
         ) |>
@@ -869,6 +870,7 @@ get_obs <- function(api_base_url,
       # and 503 are standard transients); 15s backoff period
       httr2::req_retry(
         max_tries = 8,
+        retry_on_failure = FALSE,
         is_transient = \(resp) resp_status(resp) %in% c(400, 429, 503),
         backoff = \(resp) 15
       ) |>
@@ -974,6 +976,7 @@ get_source_details <- function(src, api_base_url, token){
     # apply retry to 400 as transient error; 5sec backoff
     httr2::req_retry(
       max_tries = 5,
+      retry_on_failure = FALSE,
       is_transient = \(resp) resp_status(resp) %in% c(400),
       backoff = \(resp) 5
     ) |> 
@@ -1003,6 +1006,7 @@ get_source_subjects <- function(src, api_base_url, token){
     # apply retry to 400 as transient error; 5sec backoff
     httr2::req_retry(
       max_tries = 5,
+      retry_on_failure = FALSE,
       is_transient = \(resp) resp_status(resp) %in% c(400),
       backoff = \(resp) 5
     ) |> 
