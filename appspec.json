@@ -124,6 +124,12 @@
       },
       {
         "name": "xml2"
+      },
+      {
+        "name": "cowplot"
+      },
+      {
+        "name": "ggplot2"
       }
     ]
   },
