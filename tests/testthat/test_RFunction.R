@@ -401,14 +401,25 @@ test_that("dev testing", {
   
   skip()
   
-  rFunction(
-    #data = test_sets$nam_2 |> slice(30:70),
-    data = test_sets$nam_2 |> slice(100:200), 
+  run1 <- rFunction(
+    data = test_sets$nam_2 |> slice(1:70),
+    #data = test_sets$nam_2 |> slice(100:200), 
     #data = test_sets$nam_1 |> slice(40:80), 
     api_hostname = "standrews.dev.pamdas.org",
     api_token = er_tokens$standrews.dev$brunoc, 
     store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
   )
+  
+  
+  run2 <- rFunction(
+    data = test_sets$nam_2 |> slice(50:n()),
+    #data = test_sets$nam_2 |> slice(100:200), 
+    #data = test_sets$nam_1 |> slice(40:80), 
+    api_hostname = "standrews.dev.pamdas.org",
+    api_token = er_tokens$standrews.dev$brunoc, 
+    store_cols_str = paste(c("behav", "local_tz", "sunrise_timestamp", "sunset_timestamp", "temperature"), collapse = ",")
+  )
+  
   
   
   rFunction(
@@ -513,6 +524,68 @@ test_that("get_hist() works as expected", {
 
 
 
+
+
+# test_that("get_hist(): fails when subject-manufacturer is not 1-to-1", {
+#   
+#   testthat::local_edition(3)
+#   
+#   # setup   
+#   store_cols <- c("behav", "local_tz", "sunrise_timestamp", 
+#                   "sunset_timestamp", "temperature")
+#   cluster_cols <- c("cluster_uuid", "cluster_status")
+#   
+#   dt <- test_sets$nam_1 |> 
+#     mutate(
+#       cluster_status = "CLOSED",
+#       cluster_uuid = sub("NAM.", "CLST_", clust_id),
+#       track_id = move2::mt_track_id(test_sets$nam_1)
+#     ) |> 
+#     move2::mt_as_event_attribute(tag_id, deployment_id, individual_local_identifier, individual_id)
+#   
+#   # post data
+#   ra_post_obs(
+#     data = dt,
+#     tm_id_col = mt_time_column(dt),
+#     additional_cols = c(store_cols, cluster_cols),
+#     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+#     token = er_tokens$standrews.dev$brunoc#,
+#   )
+# 
+#   # delete a subject
+#   subjs <- get_subject_ids(
+#     "https://standrews.dev.pamdas.org/api/v1.0/", 
+#     er_tokens$standrews.dev$brunoc 
+#   )
+#   
+#   delete_subjects(
+#     subj_ids = subjs |> filter(er_subject_name == "TO_6485") |> pull(er_subject_id), 
+#     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/", 
+#     token =  er_tokens$standrews.dev$brunoc
+#   )
+#   
+#   # fails because manufacturer/source doesn't have a subject assigned
+#   expect_snapshot(
+#     fetch_hist(
+#       api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+#       token = er_tokens$standrews.dev$brunoc, 
+#       unclust_min_date = as.POSIXct("1900-01-01"), 
+#       page_size = 500
+#     ), 
+#     error = TRUE
+#   )
+#   
+#   # clean-up
+#   deep_clean_obs(
+#     api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+#     token = er_tokens$standrews.dev$brunoc, 
+#     sources_to_keep = c("someTagID_2", "SomeUniqueIDForTheDevice", "someTagID")
+#   )
+# })
+# 
+
+
+  
 
 
 ## fill_track_gaps()  -------------------------------------------------------------

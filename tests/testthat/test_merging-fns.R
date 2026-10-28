@@ -268,6 +268,31 @@ test_that("match_sf_clusters() works as expected", {
   
 
 
+# test_that("match_sf_clusters(): Melding clusters are handled correctly", {
+#   
+#   testthat::local_edition(3)
+#   
+#   # prepare 
+#   hist <- test_sets$nam_1 |> 
+#     slice(1:50) |> 
+#     mutate(cluster_uuid = sub("NAM.", "CLST_", clust_id), .keep = "unused") |> 
+#     rename(recorded_at = timestamp) 
+#   
+#   # convert to `<sf>` 
+#   class(hist) <- class(hist) %>% setdiff("move2")
+#   
+#   # case 1: 2 matches (i.e 2 overlapping) + 2 new clusters
+#   suppressWarnings(
+#     out <- match_sf_clusters(
+#       hist_dt = hist, 
+#       new_dt = slice(test_sets$nam_1, 30:100), 
+#       cluster_id_col = "clust_id", 
+#       timestamp_col = "timestamp", 
+#       plot_results = TRUE)
+#   )
+# })
+
+
 
 
 

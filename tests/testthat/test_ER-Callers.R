@@ -605,28 +605,54 @@ test_that("get_obs() dev testing", {
   
   test <- get_obs(
     api_base_url = "https://ncz-vultures-test.pamdas.org/api/v1.0",
-    token = er_tokens$`ncz-vultures-test`$brunoc,
+    token = "rBmwi6ZtdVk7JbKw9kD4nd4VHiPohu", #er_tokens$`ncz-vultures-test`$brunoc,
     filter = 0,
-    min_date = lubridate::now() - lubridate::years(2),
-    max_date = NULL, 
-    page_size = 100, 
+    min_date = as.POSIXct("2026-02-24"), # lubridate::now() - lubridate::days(5)
+    max_date = as.POSIXct("2026-02-27"), 
+    page_size = 1000, 
     include_details = TRUE,
     created_after = NULL
   )
   
   
+  test |> 
+    filter(cluster_uuid == "uncannyHorseyLoonyFanworms-20260309-223125")
   
-  test <- get_obs(
-    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0",
-    token = er_tokens$standrews.dev$brunoc,
+  
+  
+  test_1 <- get_obs(
+    api_base_url = "https://standrews.pamdas.org/api/v1.0",
+    token = er_tokens$standrews$brunoc,
     filter = 0,
-    min_date = lubridate::now() - lubridate::days(5),
-    max_date = NULL, 
-    page_size = 100, 
+    min_date = lubridate::now() - lubridate::days(120),
+    max_date = lubridate::now() - lubridate::days(60),
+    #max_date = NULL, 
+    page_size = 2000, 
     include_details = TRUE,
     created_after = NULL
   )
   
+
+  
+    
+  provider_id <- get_provider_id(
+    provider_key = "moveapps_ann_locs", 
+    api_base_url = "https://standrews.pamdas.org/api/v1.0", 
+    token = er_tokens$standrews$brunoc
+  )
+  
+  test_2 <- get_obs(
+    api_base_url = "https://standrews.pamdas.org/api/v1.0",
+    token = er_tokens$standrews$brunoc,
+    filter = 0,
+    min_date = lubridate::now() - lubridate::days(120),
+    max_date = lubridate::now() - lubridate::days(60),
+    sourceprovider_id = provider_id,
+    #max_date = NULL, 
+    page_size = 2000, 
+    include_details = TRUE,
+    created_after = NULL
+  )
   
 
 })
@@ -732,6 +758,26 @@ test_that("ra_post_obs() dev testing", {
 
 
 
+
+
+test_that("get_provider_id() dev testing", {
+  
+  skip()
+  
+  test <- get_provider_id(
+    provider_key = "moveapps_ann_locs_2",
+    api_base_url = "https://standrews.dev.pamdas.org/api/v1.0/",
+    token =er_tokens$standrews.dev$brunoc
+  )
+  
+  test
+  
+})
+
+
+
+
+
 test_that("get_source_details() dev testing", {
   
   skip()
@@ -742,7 +788,7 @@ test_that("get_source_details() dev testing", {
     token =er_tokens$standrews.dev$brunoc
   )
   
-  ?reframe
+  
   
   tibble::as_tibble(test, )
   
