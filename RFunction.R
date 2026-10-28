@@ -23,89 +23,101 @@ not_null <- Negate(is.null)
 
 # Global objects
 
-## Key attributes to trace during the API and data merging logics 
+## Key attributes to trace during the API and data merging logics
 cluster_cols <- c("cluster_status", "cluster_uuid")
-mv2_track_cols <- c("tag_id", "individual_local_identifier", "deployment_id", "individual_id", "track_id", "study_id")
+mv2_track_cols <- c(
+  "tag_id",
+  "individual_local_identifier",
+  "deployment_id",
+  "individual_id",
+  "track_id",
+  "study_id"
+)
 
 ## Exclusion flag value to tag obs in ACTIVE clusters
 active_flag <- bit64::as.integer64(1311673391471656960)
 
 
 #' OVERALL NOTES
-#' 
+#'
 #' Correspondence between ER == Move2 Attributes:
-#'    - "manufacturer_id" (defines a "source") == "{tag_id} - {deployment_id}" 
+#'    - "manufacturer_id" (defines a "source") == "{tag_id} - {deployment_id}"
 #'    - "subject_name" == "individual_local_identifier"
 #'    - "recorded_at" == mt_time_column(data)
 
-rFunction = function(data, 
-                     api_hostname = NULL,
-                     api_token = NULL,
-                     cluster_id_col = "clust_id",
-                     lookback = 30L,
-                     store_cols_str = NULL,
-                     days_thresh = 7,
-                     dist_thresh = 100,
-                     match_criteria = "gmedian",
-                     active_days_thresh = 14
-                     ) {
-  
+rFunction <- function(
+  data,
+  api_hostname = NULL,
+  api_token = NULL,
+  cluster_id_col = "clust_id",
+  lookback = 30L,
+  store_cols_str = NULL,
+  days_thresh = 7,
+  dist_thresh = 100,
+  match_criteria = "gmedian",
+  active_days_thresh = 14
+) {
   # TODO's
   #
   # - re-assess the relevance of `lookback` and `active_days_thresh` as App inputs.
   # Perhaps they can be hardwired to fixed values? Need to think carefully on
   # repercurssions of such changes.
   #
-  # - generalize function to allow simple updating and storage of data in ER 
+  # - generalize function to allow simple updating and storage of data in ER
   #   (i.e. without cluster tracking and merging)?
   #
   # - include source_provider as an App input? Very reluctant of doing so for
   #   many reasons (e.g. not easily interpretable by users; high potential for
   #   errors and conflicts in data transmissions and storage, etc)
-  
+
   # Input Validation ----------------------------------------------------------
-  
+
   logger.info("Checking inputs")
-  
+
   ## `api_hostname` and `api_token`
-  if(is.null(api_hostname)){
+  if (is.null(api_hostname)) {
     cli::cli_abort(c(
       "Argument {.arg api_hostname} is missing.",
       "{.arg api_hostname} must be an {.cls string}, not `NULL`."
     ))
   }
-  
-  if(is.null(api_token)){
+
+  if (is.null(api_token)) {
     cli::cli_abort(c(
       "Argument {.arg api_token} is missing.",
       "{.arg api_token} must be an {.cls string}, not `NULL`."
     ))
   }
-  
+
   ## `lookback`
-  if(!is.integer(lookback)) cli::cli_abort("{.arg lookback} must be an {.cls integer}.")
+  if (!is.integer(lookback)) {
+    cli::cli_abort("{.arg lookback} must be an {.cls integer}.")
+  }
 
   ## `cluster_id_col`
   check_col_dependencies(
-    id_col = cluster_id_col, 
-    app_par_name = "Cluster ID Column", 
+    id_col = cluster_id_col,
+    app_par_name = "Cluster ID Column",
     dt = data,
     suggest_msg = paste0(
       "Use clustering Apps such as {.href [Avian Cluster Detection](https://www.moveapps.org/apps/browser/81f41b8f-0403-4e9f-bc48-5a064e1060a2)} ",
-      "earlier in the workflow to generate the required column."),
-    proceed_msg = paste0("Finished check on required columns in input data - all good!")
+      "earlier in the workflow to generate the required column."
+    ),
+    proceed_msg = paste0(
+      "Finished check on required columns in input data - all good!"
+    )
   )
- 
-  
+
   ## Check non-NA values on individual_local_id (required for setting the subject's name)
-  trks_no_sbj_ids <- mt_track_data(data) |> 
-    rowwise() |> 
+  trks_no_sbj_ids <- mt_track_data(data) |>
+    rowwise() |>
     filter(is.na(individual_local_identifier))
-  
-  if(nrow(trks_no_sbj_ids) > 0){
-    
-    logger.fatal("Found missing `individual_local_identified` for at least one of the tracks in the input dataset.")
-    
+
+  if (nrow(trks_no_sbj_ids) > 0) {
+    logger.fatal(
+      "Found missing `individual_local_identified` for at least one of the tracks in the input dataset."
+    )
+
     cli::cli_abort(c(
       "Each track in input dataset must have a non-missing `individual_local_identifier` attribute.",
       x = "The following tracks have missing values for `individual_local_identifier`:",
@@ -116,21 +128,20 @@ rFunction = function(data,
       i = "Please contact the data manager or person responsible for the tag deployment on Movebank to populate this attribute."
     ))
   }
-  
+
   # Pre-processing ------------------------------------------------------
   logger.info("Performing top-level pre-processing.")
-  
+
   ## Utility variables in input data ----
   tm_id_col <- mt_time_column(data)
   trk_id_col <- mt_track_id_column(data)
-  dt_crs <- sf::st_crs(data)  # CRS
+  dt_crs <- sf::st_crs(data) # CRS
   sf_col <- attr(data, "sf_column") # geometry column
-  
-  
+
   ## Location coordinates  ------
-  ### Add lat/long columns to input data, if absent; otherwise, ensure they're 
-  ### named a "lat"/"lon" 
-  if(!any(grepl("^[l|L]at", names(data)))){
+  ### Add lat/long columns to input data, if absent; otherwise, ensure they're
+  ### named a "lat"/"lon"
+  if (!any(grepl("^[l|L]at", names(data)))) {
     data <- bind_latlon(data)
   } else {
     # ensure we have cols named "lat"/"lon". Duplicates if other aliases are
@@ -138,66 +149,67 @@ rFunction = function(data,
     data$lat <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]at"))
     data$lon <- as.data.frame(data) |> dplyr::pull(dplyr::matches("^[l|L]on"))
     # re-bind lat-lon columns if NAs present
-    if(any(is.na(data$lat))){
+    if (any(is.na(data$lat))) {
       data <- bind_latlon(data)
     }
   }
-  
-  
+
   ## Additional columns ---------
   ### Parse name of non-tracking attributes to include in upload
-  if(is.null(store_cols_str) || (length(store_cols_str) == 1 && nchar(store_cols_str) == 0)){
+  if (
+    is.null(store_cols_str) ||
+      (length(store_cols_str) == 1 && nchar(store_cols_str) == 0)
+  ) {
     # the default NULL stores all non-tracking columns (i.e. except locations and timne)
-    store_cols <- setdiff(names(data), c(tm_id_col, "lat", "lon", cluster_id_col))
+    store_cols <- setdiff(
+      names(data),
+      c(tm_id_col, "lat", "lon", cluster_id_col)
+    )
   } else {
     # parse requested event list field names into a vector (allows comma or semicolon)
-    store_cols_parsed <- unlist(strsplit(store_cols_str,",|;"))
+    store_cols_parsed <- unlist(strsplit(store_cols_str, ",|;"))
     store_cols <- gsub("\\s+", "", store_cols_parsed)
   }
-  
-  
+
   ### ensure listed store_cols are in data
-  if (!is.null(store_cols)){
+  if (!is.null(store_cols)) {
     missing_store_cols <- store_cols %notin% names(data)
-    if(sum(missing_store_cols) > 0){
+    if (sum(missing_store_cols) > 0) {
       cli::cli_abort(c(
         "Attribute{?s} {.val {store_cols[missing_store_cols]}} not found in the input data.",
         "i" = "Ensure all names listed in {.arg store_cols} match column names in the input dataset."
       ))
     }
   }
-  
-  
+
   ## Build base URL --------
-  if(grepl("http", api_hostname)){
+  if (grepl("http", api_hostname)) {
     api_hostname <- httr2::url_parse(api_hostname)$hostname
   }
-  
+
   api_base_url <- paste0("https://", api_hostname, "/api/v1.0")
-  
-  
-  # Fetch Historical Data --------------------------------------- 
+
+  # Fetch Historical Data ---------------------------------------
   logger.info("Fetching Historical Tracking Data from ER.")
-  
+
   hist_dt <- fetch_hist(
     api_base_url = api_base_url,
-    token = api_token, 
-    unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback), 
+    token = api_token,
+    unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback),
     page_size = 5000
   )
-  
-  
-  # Merge Historical and Current data --------------------------------------- 
+
+  # Merge Historical and Current data ---------------------------------------
   logger.info("Merge input data with historical data.")
-  
+
   ## Perform clusters matching ------
-  
+
   ### Prepare historical data for merging
-  if(not_null(hist_dt) && nrow(hist_dt) > 0){
-    hist_dt <- hist_dt |> 
+  if (not_null(hist_dt) && nrow(hist_dt) > 0) {
+    hist_dt <- hist_dt |>
       sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
   }
-   
+
   ### match clusters
   matched_dt <- match_sf_clusters(
     hist_dt = hist_dt,
@@ -208,87 +220,85 @@ rFunction = function(data,
     dist_thresh = units::set_units(dist_thresh, "m"),
     match_criteria = match_criteria
   )
-  
+
   # house-keeping
   rm(hist_dt)
 
-  
   ## Conciliate & merge datasets -----------
   merged_dt <- merge_and_update(
-    matched_dt = matched_dt, 
-    new_dt = data, 
-    cluster_id_col = cluster_id_col, 
-    timestamp_col = tm_id_col, 
+    matched_dt = matched_dt,
+    new_dt = data,
+    cluster_id_col = cluster_id_col,
+    timestamp_col = tm_id_col,
     store_cols = store_cols,
     active_days_thresh = active_days_thresh
   )
-  
+
   # extract UUIDs of clusters nullified due to fusion and collapsed events
   dispersed_cluster_uuid <- attr(merged_dt, "dispersed_cluster_uuid")
-  
+
   # house-keeping
   rm(matched_dt)
-  
+
   # Send new observations to ER  ----------------------------------------------
   logger.info("Uploading newly observed locations to ER.")
-  
-  merged_dt |> 
-    dplyr::filter(request_type == "POST") |> 
+
+  merged_dt |>
+    dplyr::filter(request_type == "POST") |>
     ra_post_obs(
-      tm_id_col = tm_id_col, 
-      additional_cols =  c(store_cols, cluster_cols, mv2_track_cols), 
-      api_base_url = api_base_url, 
-      token = api_token, 
-      provider_key = "moveapps_ann_locs", 
+      tm_id_col = tm_id_col,
+      additional_cols = c(store_cols, cluster_cols, mv2_track_cols),
+      api_base_url = api_base_url,
+      token = api_token,
+      provider_key = "moveapps_ann_locs",
       batch_size = 1000
     )
-  
-  
+
   # Patch updated historical observations in ER  --------------------------------
-  logger.info("Updating historical observations with latest available data to ER.")
-  
-  merged_dt |> 
-    dplyr::filter(request_type == "PATCH") |> 
+  logger.info(
+    "Updating historical observations with latest available data to ER."
+  )
+
+  merged_dt |>
+    dplyr::filter(request_type == "PATCH") |>
     patch_obs(
       additional_cols = c(store_cols, cluster_cols, mv2_track_cols),
-      api_base_url = api_base_url, 
+      api_base_url = api_base_url,
       token = api_token
     )
-  
-  
+
   # Prepare output data ------------------------------------------------------
   logger.info("Preparing data for output.")
-  
+
   ## Keep observations in new clusters and modified clusters.
   logger.info("  |- Dropping observations in unchanged clusters.")
-  
+
   ## Filter observations in new clusters and modified clusters ----
-  updated_clusters_uuid <- merged_dt |> 
-    dplyr::filter(!is.na(cluster_uuid)) |> 
-    dplyr::filter(!is.na(request_type)) |> 
-    dplyr::distinct(cluster_uuid, request_type) |> 
+  updated_clusters_uuid <- merged_dt |>
+    dplyr::filter(!is.na(cluster_uuid)) |>
+    dplyr::filter(!is.na(request_type)) |>
+    dplyr::distinct(cluster_uuid, request_type) |>
     dplyr::pull(cluster_uuid)
-  
+
   ### Handle cases with no updated or new clusters, defaulting to observations
   ### from the latest cluster. Required to ensure a non-empty output and hence
   ### avoid errors in downstream Apps (e.g. Cluster Metrics) and pipeline
   ### disruptions
-  if(length(updated_clusters_uuid) == 0){
-    
-    updated_clusters_uuid <- merged_dt |> 
-      dplyr::filter(!is.na(cluster_uuid)) |> 
-      dplyr::filter(.data[[tm_id_col]] == max(.data[[tm_id_col]])) |> 
+  if (length(updated_clusters_uuid) == 0) {
+    updated_clusters_uuid <- merged_dt |>
+      dplyr::filter(!is.na(cluster_uuid)) |>
+      dplyr::filter(.data[[tm_id_col]] == max(.data[[tm_id_col]])) |>
       dplyr::distinct(cluster_uuid) |>
       dplyr::pull(cluster_uuid)
   }
-  
+
   ### apply filter
-  clustered_dt <- merged_dt |> 
+  clustered_dt <- merged_dt |>
     dplyr::filter(cluster_uuid %in% updated_clusters_uuid)
-  
+
   ## house-keeping
   rm(merged_dt)
-  
+
   ## re-fetch unclustered obs to fill up gaps in track-level data
   out <- fill_track_gaps(
     clustered_dt = clustered_dt,
@@ -296,30 +306,37 @@ rFunction = function(data,
     api_base_url = api_base_url,
     token = api_token
   )
-  
+
   # house-keeping
   rm(clustered_dt)
-  
+
   logger.info("  |- Coerce merged data as <move2>.")
-  out <- out |> 
+  out <- out |>
     # safeguard against missing values in track_id
-    tidyr::replace_na(list(track_id =  "UNKNOWN")) |> 
+    tidyr::replace_na(list(track_id = "UNKNOWN")) |>
     # safeguard against missing values in track-level attributes within each
     # track. Should be removable once the ER-MA data exchanges are streamlined
     dplyr::mutate(
-      dplyr::across(any_of(mv2_track_cols), .fns = ~dplyr::first(.x, na_rm = TRUE)),
+      dplyr::across(
+        any_of(mv2_track_cols),
+        .fns = ~ dplyr::first(.x, na_rm = TRUE)
+      ),
       .by = track_id
     ) |>
-    dplyr::select(dplyr::any_of(c(tm_id_col, store_cols, cluster_cols, mv2_track_cols))) |>
-    dplyr::relocate(track_id) |> 
+    dplyr::select(dplyr::any_of(c(
+      tm_id_col,
+      store_cols,
+      cluster_cols,
+      mv2_track_cols
+    ))) |>
+    dplyr::relocate(track_id) |>
     move2::mt_as_move2(
-      time_column = tm_id_col, 
+      time_column = tm_id_col,
       track_id_column = "track_id",
       track_attributes = any_of(mv2_track_cols),
       sf_column_name = sf_col
     )
-  
-  
+
   ## Add tracker for dispersed clusters ---------
   ##
   ## Append dummy rows for tracking UUIDs of dispersed clusters to use in
@@ -331,18 +348,23 @@ rFunction = function(data,
   ## Here we force all dispersed clusters to be located at (0,0) and send them
   ## back in time. NOTE: each dispersed cluster requires a minimum of two rows of
   ## observations for metrics derivations
-  if(not_null(dispersed_cluster_uuid) && length(dispersed_cluster_uuid) > 0) {
-    
+  if (not_null(dispersed_cluster_uuid) && length(dispersed_cluster_uuid) > 0) {
     dispersed_clusters_tracker <- out |>
       as_tibble() |>
-      dplyr::slice_sample(n = length(dispersed_cluster_uuid) * 2) |> 
+      dplyr::slice_sample(n = length(dispersed_cluster_uuid) * 2) |>
       mutate(
         track_id = "DISPERSED_CLUSTERS_TRACKER",
         cluster_uuid = rep(dispersed_cluster_uuid, each = 2),
         cluster_status = "CLOSED", #"DISPERSED"
         #{{sf_col}} := sf::st_sfc(sf::st_point(c(0, 0))),
-        {{sf_col}} := sf::st_transform(sf::st_sfc(sf::st_point(c(0, 90)), crs = 4326), dt_crs),
-        dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), ~as.POSIXct("2000-01-01")),
+        {{ sf_col }} := sf::st_transform(
+          sf::st_sfc(sf::st_point(c(0, 90)), crs = 4326),
+          dt_crs
+        ),
+        dplyr::across(
+          dplyr::where(~ inherits(.x, "POSIXt")),
+          ~ as.POSIXct("2000-01-01")
+        ),
         dplyr::across(dplyr::matches("local_tz"), ~"UTC")
       ) |>
       move2::mt_as_move2(
@@ -352,73 +374,82 @@ rFunction = function(data,
         sf_column_name = sf_col
       ) |>
       sf::st_set_crs(dt_crs)
-    
+
     out <- move2::mt_stack(out, dispersed_clusters_tracker)
   }
- 
-  
-  logger.info(glue::glue("{symbol$star} Finished update to master location data in ER."))
+
+  logger.info(glue::glue(
+    "{symbol$star} Finished update to master location data in ER."
+  ))
   out
-  
 }
-
-
-
 
 
 # -- Helper Functions ===========================================================
 
-check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, proceed_msg,  
-                       call = rlang::caller_env(), arg = rlang::caller_arg(id_col)){
-  
+check_col_dependencies <- function(
+  id_col,
+  app_par_name,
+  dt,
+  suggest_msg,
+  proceed_msg,
+  call = rlang::caller_env(),
+  arg = rlang::caller_arg(id_col)
+) {
   dt_cols <- colnames(dt)
-  
-  if(is.null(id_col)){
+
+  if (is.null(id_col)) {
     logger.fatal(paste0("`", arg, "` is missing."))
-    cli::cli_abort(c(
-      "Parameter '{app_par_name}' ({.arg {arg}}) must be a string, not `NULL`.",
-      "i" = "Please provide a valid column name for this parameter."
-    ), call = call)
-    
-  } else if(!is.character(id_col) || length(id_col) > 1){
+    cli::cli_abort(
+      c(
+        "Parameter '{app_par_name}' ({.arg {arg}}) must be a string, not `NULL`.",
+        "i" = "Please provide a valid column name for this parameter."
+      ),
+      call = call
+    )
+  } else if (!is.character(id_col) || length(id_col) > 1) {
     logger.fatal(paste0("`", arg, "` must be a string."))
     cli::cli_abort(
       "Parameter '{app_par_name}' ({.arg {arg}}) must be a string.",
-      call = call)
-    
+      call = call
+    )
   } else if (id_col %notin% dt_cols) {
     logger.fatal(paste0(
-      "Input data does not have column '", id_col, "'. Please provide a ",
+      "Input data does not have column '",
+      id_col,
+      "'. Please provide a ",
       "valid column name with cluster ID annotations."
     ))
-    cli::cli_abort(c(
-      "Specified column name {.arg {id_col}} must be present in the input data.",
-      "!" = "Please provide a valid column name for parameter '{app_par_name}' ({.arg {arg}}).",
-      i = suggest_msg
-    ), call = call)
-  } 
-  
-
-  if(all(is.na(dt[[id_col]]))){
-    #logger.fatal(glue::glue("Column {.code {id_col}} in input data contains universally NAs"))
-    cli::cli_abort(c(
-      "Column {.code {id_col}} in input dataset contains only NAs. Unable to proceed with cluster updating.",
-      "i" = paste0(
-        "Input data must include annotations for at least one cluster"
-      )
-    ),
-    class = "no-clusters-in-input"
+    cli::cli_abort(
+      c(
+        "Specified column name {.arg {id_col}} must be present in the input data.",
+        "!" = "Please provide a valid column name for parameter '{app_par_name}' ({.arg {arg}}).",
+        i = suggest_msg
+      ),
+      call = call
     )
   }
-  
+
+  if (all(is.na(dt[[id_col]]))) {
+    #logger.fatal(glue::glue("Column {.code {id_col}} in input data contains universally NAs"))
+    cli::cli_abort(
+      c(
+        "Column {.code {id_col}} in input dataset contains only NAs. Unable to proceed with cluster updating.",
+        "i" = paste0(
+          "Input data must include annotations for at least one cluster"
+        )
+      ),
+      class = "no-clusters-in-input"
+    )
+  }
+
   logger.info(proceed_msg)
-  
 }
 
 
 # ////////////////////////////////////////////////////////////////////////////////////
 #' Download a subset of historic observations from master dataset stored in ER
-#' 
+#'
 #' @param api_base_url `<character>`, the base URL of the API endpoint used to fetch
 #'   historical data (e.g., `"https://api.example.org/v1"`).
 #' @param token `<character>`, a valid authentication token used to authorize the
@@ -435,78 +466,75 @@ check_col_dependencies <- function(id_col, app_par_name, dt, suggest_msg, procee
 #' @param page_size Integer. Number of records to retrieve per page. Defaults to
 #'   5000. Larger values may reduce request frequency but can increase memory
 #'   usage.
-#' 
-#' @details 
+#'
+#' @details
 #' - process split into 2 fetching requests:
-#'      1. **ALL** observations tagged with clusters that are currently ACTIVE 
+#'      1. **ALL** observations tagged with clusters that are currently ACTIVE
 #'      (`filter` == 1311673391471656960)
 #'      2. For a given time-window: observations tagged with closed clusters AND
 #'      un-clustered observations
-#'      
-#' @returns 
+#'
+#' @returns
 #' Either a data frame, or a NULL object under the following conditions in ER's Observation Table:
 #'  - No records (i.e. 0 observations)
 #'  - Absence of attribute "cluster_uuid" in retrieved data
-#'  
-#' Note: some ER-origin attributes are renamed to ensure compatibility with original 
+#'
+#' Note: some ER-origin attributes are renamed to ensure compatibility with original
 #'   `<move2>` data
-#' 
-fetch_hist <- function(api_base_url, 
-                       token, 
-                       unclust_min_date = NULL, 
-                       max_date = NULL, 
-                       include_details = TRUE,
-                       page_size = 5000,
-                       provider_key = "moveapps_ann_locs"
-                       #cluster_status_filter = c("active", "all-status")
-){
-  
-  
+#'
+fetch_hist <- function(
+  api_base_url,
+  token,
+  unclust_min_date = NULL,
+  max_date = NULL,
+  include_details = TRUE,
+  page_size = 5000,
+  provider_key = "moveapps_ann_locs"
+  #cluster_status_filter = c("active", "all-status")
+) {
   # Retrieve observations ---------------------------------------
-  
+
   # get provider UUID from its key
   provider_id <- get_provider_id(provider_key, api_base_url, token)
-  
+
   # Get ALL observations in active clusters up to max_date
   obs_cluster_actv <- get_obs(
-    api_base_url = api_base_url, 
-    token = token, 
+    api_base_url = api_base_url,
+    token = token,
     filter = active_flag,
-    min_date = NULL, 
-    max_date = max_date, 
+    min_date = NULL,
+    max_date = max_date,
     created_after = NULL,
     include_details = include_details,
     sourceprovider_id = provider_id,
     page_size = page_size
-  ) 
+  )
 
-  
-  # Ensure fetched obs are strictly from active clusters 
-  if(nrow(obs_cluster_actv) > 0){
-  
-    if(any(obs_cluster_actv$cluster_status != "ACTIVE")){
+  # Ensure fetched obs are strictly from active clusters
+  if (nrow(obs_cluster_actv) > 0) {
+    if (any(obs_cluster_actv$cluster_status != "ACTIVE")) {
       cli::cli_abort(c(
         "Unexpected non-active clusters were returned from historical data.",
         x = "The `active_flag` filter in ER's Observations GET request appears not to be functioning correctly."
       ))
     }
   }
-  
+
   # Get un-clustered and closed observations (tagged as non_excluded 0) from
   # min_date to max_date
   obs_cluster_non_excluded <- get_obs(
-    api_base_url = api_base_url, 
-    token = token, 
+    api_base_url = api_base_url,
+    token = token,
     filter = 0,
-    min_date = unclust_min_date, 
-    max_date = max_date, 
+    min_date = unclust_min_date,
+    max_date = max_date,
     created_after = NULL,
     sourceprovider_id = provider_id,
     include_details = include_details,
     page_size = page_size
   )
 
-  # Important notes: 
+  # Important notes:
   # (1) Change in ER to accommodate the map display of ACTIVE cluster, which are
   # tagged with a "3rd party flag" to allow for filtering, means that filter = 0
   # now also returns obs in ACTIVE clusters.Therefore, an additional filtering
@@ -519,53 +547,54 @@ fetch_hist <- function(api_base_url,
   # to ensure key identifier columns used in our framework are dropped here to
   # avoid duplication and misspecification issues in the subsequent data
   # processing of the app
-  if(nrow(obs_cluster_non_excluded) > 0){
-    
-    obs_cluster_non_excluded <- obs_cluster_non_excluded |> 
-      dplyr::filter(exclusion_flags == 0) |> 
+  if (nrow(obs_cluster_non_excluded) > 0) {
+    obs_cluster_non_excluded <- obs_cluster_non_excluded |>
+      dplyr::filter(exclusion_flags == 0) |>
       # drop fetched columns that otherwise would cause issues in overall processing
-      dplyr::select(-any_of(c("subject_name", "manufacturer_id", "individual_local_identifier")))
-    
+      dplyr::select(
+        -any_of(c(
+          "subject_name",
+          "manufacturer_id",
+          "individual_local_identifier"
+        ))
+      )
   }
-  
-  
+
   # Handle retrieved datasets -------------------------------------
   # NB: early versions would drop obs tagged as "CLOSED" at this point. However
   # these obs MUST be kept for cross-referencing with the "new" dataset to
   # handle duplication
-  
-  if(nrow(obs_cluster_actv) == 0 && nrow(obs_cluster_non_excluded) == 0){
+
+  if (nrow(obs_cluster_actv) == 0 && nrow(obs_cluster_non_excluded) == 0) {
     return(NULL)
   }
 
   # stack-up the two datasets
   obs <- dplyr::bind_rows(obs_cluster_actv, obs_cluster_non_excluded)
-  
-  
+
   # Retrieve required complementary data ------------------------------------------
-  # Get manufacturer_id/tag_id, subject_name/individual_local_identifier 
+  # Get manufacturer_id/tag_id, subject_name/individual_local_identifier
   # and provider key for each source.
   sources <- unique(obs$source)
-  
-  sources_info <- sources |> 
-    purrr::map(function(src){
-      
+
+  sources_info <- sources |>
+    purrr::map(function(src) {
       #browser()
-      
+
       # retrieve source details
-      source_dets <- get_source_details(src, api_base_url, token) |> 
-        purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))
-      
+      source_dets <- get_source_details(src, api_base_url, token) |>
+        purrr::map(~ ifelse(length(.x) == 0 | is.null(.x), NA, .x))
+
       # retrieve details of subject assigned to source
       subject_dets <- get_source_subjects(src, api_base_url, token)
-      
-      if(length(subject_dets) > 1){
+
+      if (length(subject_dets) > 1) {
         cli::cli_abort(c(
           "Issue found while fecthing subject details from ER.",
           x = "Each subject must be assigned to a single unique `manufacturer_id`.",
           x = "Detected a one-to-many relationship between `manufacturer_id` and `subject_name`, which is not currently allowed."
         ))
-      } else if(length(subject_dets) == 0){
+      } else if (length(subject_dets) == 0) {
         cli::cli_abort(c(
           "Issue found while fecthing subject details from ER.",
           x = "Each subject must be assigned to a single unique `manufacturer_id`.",
@@ -575,44 +604,40 @@ fetch_hist <- function(api_base_url,
         # 1-to-1 source to subject drop higher level and formats inner list to
         # ensure correct formatting for tibble below (e.g. no empty nested lists)
         subject_dets <- subject_dets[[1]] |>
-          purrr::map(~ifelse(length(.x) == 0 | is.null(.x), NA, .x))  
+          purrr::map(~ ifelse(length(.x) == 0 | is.null(.x), NA, .x))
       }
-      
+
       dplyr::tibble(
         er_subject_id = subject_dets$id,
         er_subject_name = subject_dets$name,
-        er_manufacturer_id = source_dets$manufacturer_id, 
+        er_manufacturer_id = source_dets$manufacturer_id,
         provider = source_dets$provider
       )
-      
-    }) |> 
-    setNames(sources) |> 
+    }) |>
+    setNames(sources) |>
     purrr::list_rbind(names_to = "source")
-  
-  
+
   # append source details to obs
   obs <- dplyr::left_join(obs, sources_info, by = "source")
-  
-  
+
   # Process for output --------------------------------------------------------
-  obs |> 
-    dplyr::select(!c(exclusion_flags, provider)) |> 
+  obs |>
+    dplyr::select(!c(exclusion_flags, provider)) |>
     dplyr::mutate(
       er_obs_id = id,
       er_source_id = source,
       #tag_id = manufacturer_id,
       #individual_local_identifier = er_subject_name,
-      recorded_at = lubridate::as_datetime(recorded_at, tz = "UTC"), 
+      recorded_at = lubridate::as_datetime(recorded_at, tz = "UTC"),
       .before = 1,
       .keep = "unused"
     )
 }
 
 
-
 # ///////////////////////////////////////////////////////////////////////////////
 #' Low-level helper to perform Radio-Agent POST Observations request
-#' 
+#'
 #' @param data a data.frame, data to be pushed to EarthRanger.
 #' @param tm_id_col character, name of the column in `data` that contains the
 #'   timestamps of each observation.
@@ -624,37 +649,52 @@ fetch_hist <- function(api_base_url,
 #'   request.
 #' @param provider_key character string, specifying the natural key for the
 #'   source provider, as defined in EarthRanger. Expects such key is already
-#'   defined in ER's Observation's system. 
+#'   defined in ER's Observation's system.
 #' @param batch_size numeric, the number of observations to include in each
 #'   batch POST request. ER's documentation suggest sending as many as 100
 #'   observations per request.
-#' 
+#'
 #' @details
-#' - RA-POST requests allow for automatic creation of new manufactor's/source ID 
+#' - RA-POST requests allow for automatic creation of new manufactor's/source ID
 #' and subject's names
-ra_post_obs <- function(data, 
-                        tm_id_col, 
-                        additional_cols, 
-                        api_base_url, 
-                        token, 
-                        provider_key = "moveapps_ann_locs",
-                        batch_size = 1000){
-
-  if(nrow(data) == 0){
+ra_post_obs <- function(
+  data,
+  tm_id_col,
+  additional_cols,
+  api_base_url,
+  token,
+  provider_key = "moveapps_ann_locs",
+  batch_size = 1000
+) {
+  if (nrow(data) == 0) {
     logger.warn("  |- No observations to POST - skipping POSTing step.")
     return(NULL)
   }
-  
+
   # input validation -------------------------------------------------------------------
-  req_cols <- c("cluster_status", "tag_id", "deployment_id", "individual_local_identifier", "lat", "lon")
+  req_cols <- c(
+    "cluster_status",
+    "tag_id",
+    "deployment_id",
+    "individual_local_identifier",
+    "lat",
+    "lon"
+  )
   miss_cols <- req_cols[req_cols %notin% names(data)]
   if (length(miss_cols) > 0) {
-    cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
+    cli::cli_abort(
+      "{.arg data} is missing the following required columns: {.val {miss_cols}}."
+    )
   }
-    
+
   # Pre-Processing --------------------------------------------------------
   # append API's endpoint for request
-  api_endpnt <- file.path(api_base_url, "sensors/dasradioagent", provider_key, "status")
+  api_endpnt <- file.path(
+    api_base_url,
+    "sensors/dasradioagent",
+    provider_key,
+    "status"
+  )
 
   # Manipulate data for ER's RA POSTing -----------------------------------
   #   - add/rename required cols
@@ -662,97 +702,107 @@ ra_post_obs <- function(data,
   #   - nest data for multiple observation POSTing
   #   - generate batch IDs for batch posting
   #   - flag obs in ACTIVE clusters with appropriate exclusion flags
-  dt_jsonable <- data |> 
+  dt_jsonable <- data |>
     data.frame() |>
     dplyr::mutate(
       # date-time cols formatted as ISO 8601 strings
-      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format_iso8601(x)),
+      dplyr::across(dplyr::where(~ inherits(.x, "POSIXt")), \(x) {
+        format_iso8601(x)
+      }),
       # convert any columns of class integer64 to string
-      dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
+      dplyr::across(dplyr::where(~ inherits(.x, "integer64")), as.character),
       # drop units
-      dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
-    ) |> 
+      dplyr::across(dplyr::where(~ inherits(.x, "units")), .fns = \(x) {
+        units::set_units(x, NULL)
+      })
+    ) |>
     dplyr::mutate(
       recorded_at = .data[[tm_id_col]],
       manufacturer_id = glue::glue("{tag_id}-{deployment_id}"),
       subject_name = as.character(individual_local_identifier),
       subject_type = "Wildlife",
-      subject_subtype = "Unassigned", 
+      subject_subtype = "Unassigned",
       #source_type = "tracking_device",
       .keep = "unused",
       .after = dplyr::last_col()
-    ) |> 
+    ) |>
     dplyr::mutate(
-      exclusion_flags = dplyr::if_else(cluster_status == "ACTIVE", as.integer64(active_flag), as.integer64(0), missing = as.integer64(0))
-    ) |> 
+      exclusion_flags = dplyr::if_else(
+        cluster_status == "ACTIVE",
+        as.integer64(active_flag),
+        as.integer64(0),
+        missing = as.integer64(0)
+      )
+    ) |>
     tidyr::nest(
       location = c(lat, lon),
       additional = dplyr::any_of(additional_cols),
       .by = c(recorded_at:exclusion_flags)
-    ) |> 
+    ) |>
     dplyr::mutate(
       location = lapply(location, as.list),
       additional = lapply(additional, as.list),
       batch_id = 1:n() %/% batch_size
     )
-  
-  
+
   # print the date-time format used for POSTing, for checking
   logger.debug(
-    glue::glue("Example date-time string for POSTing (format ISO8601): {format_iso8601(data[[tm_id_col]][1])}")
+    glue::glue(
+      "Example date-time string for POSTing (format ISO8601): {format_iso8601(data[[tm_id_col]][1])}"
+    )
   )
-  
-  
+
   # Perform, batch RA Post Request ------------------------------
   logger.info("POSTing observations to ER...")
-  
-  results <- dt_jsonable |> 
-    split(~batch_id) |> 
-    purrr::map_int(function(batch) {
-      #browser()
-      # Prepare request
-      req <- httr2::request(api_endpnt) |>
-        httr2::req_auth_bearer_token(token) |> 
-        httr2::req_headers(
-          "Accept" = "application/json",
-          "Content-Type" = "application/json"
-        ) |> 
-        httr2::req_body_json(batch)
-      
-      #req |> req_dry_run()
-      
-      # Send request 
-      req |> 
-        httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |> 
-        # apply retry, adding 502 "Bad Gateway" and 504 "Gateway Timeout" as a
-        # transient error (429 and 503 are standard transients); 20s backoff
-        # period
-        httr2::req_retry(
-          max_tries = 5,
-          retry_on_failure = TRUE,
-          is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
-          backoff = \(resp) 20
-        ) |>
-        httr2::req_perform() |> 
-        httr2::resp_status()
 
-    }, 
-    .progress = list(format = "Uploading batch nr. {pb_current}/{pb_total} [{pb_rate}]")# | {cli::pb_eta_str}")
+  results <- dt_jsonable |>
+    split(~batch_id) |>
+    purrr::map_int(
+      function(batch) {
+        #browser()
+        # Prepare request
+        req <- httr2::request(api_endpnt) |>
+          httr2::req_auth_bearer_token(token) |>
+          httr2::req_headers(
+            "Accept" = "application/json",
+            "Content-Type" = "application/json"
+          ) |>
+          httr2::req_body_json(batch)
+
+        #req |> req_dry_run()
+
+        # Send request
+        req |>
+          httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |>
+          # apply retry, adding 502 "Bad Gateway" and 504 "Gateway Timeout" as a
+          # transient error (429 and 503 are standard transients); 20s backoff
+          # period
+          httr2::req_retry(
+            max_tries = 5,
+            retry_on_failure = TRUE,
+            is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
+            backoff = \(resp) 20
+          ) |>
+          httr2::req_perform() |>
+          httr2::resp_status()
+      },
+      .progress = list(
+        format = "Uploading batch nr. {pb_current}/{pb_total} [{pb_rate}]"
+      ) # | {cli::pb_eta_str}")
     )
-  
+
   # Log Results ------------------------------------------------------
   successful_batches <- sum(results %in% c(200, 201))
   total_batches <- length(results)
-  logger.info(glue::glue("{symbol$tick} {successful_batches} of {total_batches} batches of observations posted successfully to EartRanger."))
-  
+  logger.info(glue::glue(
+    "{symbol$tick} {successful_batches} of {total_batches} batches of observations posted successfully to EartRanger."
+  ))
 }
-
-
 
 
 # //////////////////////////////////////////////////////////////////////////////
 #' Perform observations GET requests to EarthRanger
-#' 
+#'
 #' @param api_base_url `<character>`, the base URL of the API endpoint used to fetch
 #'   historical data (e.g., `"https://api.example.org/v1"`).
 #' @param token `<character>`, a valid authentication token used to authorize the
@@ -774,75 +824,72 @@ ra_post_obs <- function(data,
 #' @param page_size Integer. Number of records to retrieve per page. Defaults to
 #'   5000. Larger values may reduce request frequency but can increase memory
 #'   usage.
-#'   
-get_obs <- function(api_base_url, 
-                    token, 
-                    min_date = NULL, 
-                    max_date = NULL, 
-                    created_after = NULL, 
-                    filter = NULL, 
-                    subject_id = NULL,
-                    sourceprovider_id = NULL,
-                    include_details = TRUE, 
-                    page_size = 1000){
-  
+#'
+get_obs <- function(
+  api_base_url,
+  token,
+  min_date = NULL,
+  max_date = NULL,
+  created_after = NULL,
+  filter = NULL,
+  subject_id = NULL,
+  sourceprovider_id = NULL,
+  include_details = TRUE,
+  page_size = 1000
+) {
   # Input Validation & processing ----------------------------------------
   #
   ## Note dttms need to be formatted as ISO 8601 strings (required by the API)
-  
+
   ## `filter`
-  if(not_null(filter)){
-    if(!is.numeric(filter)){
+  if (not_null(filter)) {
+    if (!is.numeric(filter)) {
       cli::cli_abort("{.arg filter} must be numeric")
     }
-  } else{
+  } else {
     # "null" filter means all observations regardless associated exclusion flags
-    filter <-  "null"
+    filter <- "null"
   }
-  
+
   ## `min_date`
-  if(not_null(min_date)){
-    if(!inherits(min_date, "POSIXt")) {
+  if (not_null(min_date)) {
+    if (!inherits(min_date, "POSIXt")) {
       cli::cli_abort("{.arg min_date} must be {.cls POSIXt}")
     }
     min_date <- format(min_date, "%Y-%m-%d %X%z")
-    
-  } else if(not_null(sourceprovider_id)){ 
+  } else if (not_null(sourceprovider_id)) {
     # streamline fetch using src provider ID when `min_date` is null
     # overwrite `min_date` default of last 16 days (as per Jes email, 23/02/2026)
     min_date <- format(as.POSIXct("1950-01-01"), "%Y-%m-%d %X%z")
   }
 
-    
   ## `max_date`
-  if(not_null(max_date)){
-    if(!inherits(max_date, "POSIXt")) {
+  if (not_null(max_date)) {
+    if (!inherits(max_date, "POSIXt")) {
       cli::cli_abort("{.arg max_date} must be {.cls POSIXt}")
     }
     max_date <- format(max_date, "%Y-%m-%d %X%z")
   }
-  
+
   ## `created_after`
-  if(not_null(created_after)){
-    if(!inherits(created_after, "POSIXt")) {
+  if (not_null(created_after)) {
+    if (!inherits(created_after, "POSIXt")) {
       cli::cli_abort("{.arg created_after} must be {.cls POSIXt}")
     }
     created_after <- format(created_after, "%Y-%m-%d %X%z")
   }
 
-
   # GET observations request  ---------------------------------------
   api_endpnt <- file.path(api_base_url, "observations")
-  
+
   ## Initialize variables for pagination
   all_results <- list()
   next_page_url <- api_endpnt
-  
+
   cli::cli_progress_bar("Retrieving historic observations from ER - page")
-  
+
   ## Loop to retrieve all pages
   while (!is.null(next_page_url)) {
-    
     # Prepare the request with additional query parameters
     req <- httr2::request(next_page_url) |>
       httr2::req_url_query(
@@ -853,19 +900,19 @@ get_obs <- function(api_base_url,
         subject_id = subject_id,
         sourceprovider_id = sourceprovider_id,
         page_size = page_size,
-        #use_cursor = "true",
+        use_cursor = "true",
         include_details = tolower(as.character(include_details)) # Convert logical to string
       ) |>
-      httr2::req_auth_bearer_token(token) |> 
+      httr2::req_auth_bearer_token(token) |>
       httr2::req_headers("accept" = "application/json")
-    
+
     #httr2::req_dry_run(req)
-    
+
     # Perform the request
-    res <- req |> 
-      httr2::req_error(body =  \(resp){
+    res <- req |>
+      httr2::req_error(body = \(resp) {
         "Failed to request observations historical data."
-      }) |> 
+      }) |>
       # apply retry, adding 400 "Bad Request" as a transient error (429
       # and 503 are standard transients); 15s backoff period
       httr2::req_retry(
@@ -875,147 +922,145 @@ get_obs <- function(api_base_url,
         backoff = \(resp) 15
       ) |>
       httr2::req_perform()
-    
+
     # Parse the response -----------
-    data <- httr2::resp_body_json(res, simplifyVector = TRUE) |> 
-      purrr::pluck("data") 
+    data <- httr2::resp_body_json(res, simplifyVector = TRUE) |>
+      purrr::pluck("data")
 
     # isolate dataset with observations
     obs <- data[["results"]]
-    
+
     # If location is non-null, unnest the column
     if (not_null(obs$location)) {
       obs <- obs |>
-        tidyr::unnest(location, names_sep = "_") |> 
+        tidyr::unnest(location, names_sep = "_") |>
         dplyr::rename(
           lat = "location_latitude",
           lon = "location_longitude"
         )
     }
-    
-    # observation_details contains a nested list equal in 
+
+    # observation_details contains a nested list equal in
     # length to the data. We want to first turn this into a nested
     # column, and then unnest:
     if (!is.null(obs$observation_details)) {
-      
       if (class(obs$observation_details) == "data.frame") {
         observation_details_out <- obs$observation_details
       } else {
         observation_details_out <- obs$observation_details |>
-          lapply(data.frame) |> 
-          # If any entry is a 0-row data frame or empty list, replace it 
+          lapply(data.frame) |>
+          # If any entry is a 0-row data frame or empty list, replace it
           # with a data.frame containing only PLACEHOLDER = NA
-          purrr::map( \(x){ if (nrow(x) == 0 || is.null(x)) data.frame(PLACEHOLDER = NA) else x}) |> 
-          dplyr::bind_rows() |> 
+          purrr::map(\(x) {
+            if (nrow(x) == 0 || is.null(x)) data.frame(PLACEHOLDER = NA) else x
+          }) |>
+          dplyr::bind_rows() |>
           dplyr::select(-dplyr::any_of("PLACEHOLDER")) # this was just for merging
       }
-      
+
       # Validate that nrow(observation_details_out) matches nrow(data)
       if (nrow(observation_details_out) != nrow(obs)) {
         cli::cli_abort(
           "Observation details length mismatch: {nrow(observation_details_out)} vs {nrow(obs)}"
         )
       }
-      
-      observation_details_out <- observation_details_out |> 
+
+      observation_details_out <- observation_details_out |>
         dplyr::select(-dplyr::any_of(c("lat", "lon")))
-      
+
       # Bind observation_details_df back to the main data frame
       obs <- obs |>
         # Drop the main observation_details col
         dplyr::select(-"observation_details") |>
-        dplyr::bind_cols(observation_details_out) |> 
+        dplyr::bind_cols(observation_details_out) |>
         # sanitise data
         clean_obs()
     }
 
     # Append the current page of results to the list
     all_results[[next_page_url]] <- obs
-    
+
     # Update the next page URL for pagination
     next_page_url <- data[["next"]]
-    
+
     cli::cli_progress_update()
   }
-  
+
   cli::cli_progress_done()
-  
-  # discard empty list elements 
+
+  # discard empty list elements
   all_results <- purrr::compact(all_results)
-  
+
   # Combine all results into a data frame
   combined_obs <- if (length(all_results) > 0) {
     do.call(bind_rows, lapply(all_results, as.data.frame))
   } else {
-    logger.warn("GET request for historic observations succeeded but returned an empty dataset.")
+    logger.warn(
+      "GET request for historic observations succeeded but returned an empty dataset."
+    )
     data.frame()
   }
-  
+
   # final prep
-  combined_obs |> 
+  combined_obs |>
     # ensure any duplicates are dropped
     dplyr::distinct()
 }
 
 
-
 # ///////////////////////////////////////////////////////////////////////////////
 #' Helper to fetch information about the transmitting device (i.e. manufactors ID)
-#' 
+#'
 #' @param src character, the source UUID (i.e. the tag ID)
-get_source_details <- function(src, api_base_url, token){
-  
+get_source_details <- function(src, api_base_url, token) {
   req_url <- file.path(api_base_url, "source", src)
-  
+
   req_src <- httr2::request(req_url) |>
-    httr2::req_auth_bearer_token(token) |> 
+    httr2::req_auth_bearer_token(token) |>
     httr2::req_headers("accept" = "application/json")
   #req_src |> req_dry_run()
-  
-  req_src |> 
+
+  req_src |>
     # apply retry to 400 as transient error; 5sec backoff
     httr2::req_retry(
       max_tries = 5,
       retry_on_failure = FALSE,
       is_transient = \(resp) resp_status(resp) %in% c(400),
       backoff = \(resp) 5
-    ) |> 
-    #httr2::req_error(~FALSE)|> 
-    httr2::req_perform() |> 
-    resp_body_json() |> 
+    ) |>
+    #httr2::req_error(~FALSE)|>
+    httr2::req_perform() |>
+    resp_body_json() |>
     purrr::pluck("data")
 }
-
 
 
 # ///////////////////////////////////////////////////////////////////////////////
 #' Helper to fetch information about the tagged subject
-#' 
+#'
 #' @param src single character string, the UUID of the source
-get_source_subjects <- function(src, api_base_url, token){
-  
+get_source_subjects <- function(src, api_base_url, token) {
   req_url <- file.path(api_base_url, "source", src, "subjects")
-  
+
   req_src <- httr2::request(req_url) |>
-    httr2::req_url_query(include_inactive = TRUE) |> 
-    httr2::req_auth_bearer_token(token) |> 
+    httr2::req_url_query(include_inactive = TRUE) |>
+    httr2::req_auth_bearer_token(token) |>
     httr2::req_headers("accept" = "application/json")
   #req_src |> req_dry_run()
-  
-  req_src |> 
+
+  req_src |>
     # apply retry to 400 as transient error; 5sec backoff
     httr2::req_retry(
       max_tries = 5,
       retry_on_failure = FALSE,
       is_transient = \(resp) resp_status(resp) %in% c(400),
       backoff = \(resp) 5
-    ) |> 
-    #httr2::req_error(~FALSE)|> 
-    httr2::req_perform() |> 
-    httr2::resp_body_json() |> 
+    ) |>
+    #httr2::req_error(~FALSE)|>
+    httr2::req_perform() |>
+    httr2::resp_body_json() |>
     purrr::pluck("data")
 }
-
 
 
 # ////////////////////////////////////////////////////////////////////////////////////////////
@@ -1025,35 +1070,37 @@ get_source_subjects <- function(src, api_base_url, token){
 #' @param api_base_url A single string.
 #' @param token A single string (bearer token).
 #'
-#' @returns 
+#' @returns
 #' A single string representing the source provider UUID. Returns `NULL` if no
 #' source provider matching `provider_key` is found. If multiple are found, the
 #' function will raise an error.
-#' 
-get_provider_id <- function(provider_key, api_base_url, token){
-
+#'
+get_provider_id <- function(provider_key, api_base_url, token) {
   req_url <- file.path(api_base_url, "sourceproviders")
 
   # request source providers in instance
-  req_srcprv <- httr2::request(req_url) |> 
-    httr2::req_url_query(page_size = 1000) |> 
+  req_srcprv <- httr2::request(req_url) |>
+    httr2::req_url_query(page_size = 1000) |>
     httr2::req_auth_bearer_token(token) |>
     httr2::req_headers("accept" = "application/json")
   #req_src |> req_dry_run()
-  
+
   # extract source providers from API response
   res_srcprvs <- req_srcprv |>
     #httr2::req_error(~FALSE)|>
     httr2::req_perform() |>
     httr2::resp_body_json() |>
-    purrr::pluck("data") |> 
+    purrr::pluck("data") |>
     purrr::pluck("results")
-  
+
   # filter source provider UUID for the specified natural key
-  srcprv_id <- purrr::keep(res_srcprvs, ~ .x[["provider_key"]] == provider_key) |>
-    purrr::map_chr(~.x[["id"]])
-  
-  if(length(srcprv_id) == 0){
+  srcprv_id <- purrr::keep(
+    res_srcprvs,
+    ~ .x[["provider_key"]] == provider_key
+  ) |>
+    purrr::map_chr(~ .x[["id"]])
+
+  if (length(srcprv_id) == 0) {
     return(NULL)
     #cli::cli_abort("No Source Provider UUID found for {.arg provider_key} {.val {provider_key}}.")
   } else if (length(srcprv_id) > 1) {
@@ -1062,93 +1109,99 @@ get_provider_id <- function(provider_key, api_base_url, token){
       "x" = "Each Source Provider UUID must have a unique Natural Key."
     ))
   }
-  
+
   srcprv_id
 }
 
 
-
-
 # ///////////////////////////////////////////////////////////////////////////////
 #' Perform observations PATCH request to EartRanger
-#' 
+#'
 #' @param additional_cols names of columns to store in data in ER. If `NULL`
 #'   (default), the existing attributes in the "additional" field are preserved
 #'   (i.e. not PATCHed). If provided, the "additional" field in ER's Observation
 #'   will be fully overwritten with the specified attributes and their values —
 #'   **use with caution**.
-#'   
+#'
 #'  @details
 #' General assumptions and scope:
 #'  - location columns must be named "lat"/"lon"
-#'  - Currently this Patch function is (deliberately) limited to only update 
+#'  - Currently this Patch function is (deliberately) limited to only update
 #'  the following Obs fields: "locations", "additional" and "exclusion_flags"
-patch_obs <- function(data,
-                      additional_cols = NULL,
-                      api_base_url, 
-                      token){
-  
+patch_obs <- function(data, additional_cols = NULL, api_base_url, token) {
   # Input Validation -----------------------------------------------------------
-  if(nrow(data) == 0){
+  if (nrow(data) == 0) {
     logger.warn("  |- No observations to PATCH - skipping PATCHing step.")
     return(invisible())
   }
-  
-  
+
   req_cols <- c(additional_cols, "er_obs_id", "cluster_status", "lat", "lon")
   miss_cols <- req_cols[req_cols %notin% names(data)]
   if (length(miss_cols) > 0) {
-    cli::cli_abort("{.arg data} is missing the following required columns: {.val {miss_cols}}.")
+    cli::cli_abort(
+      "{.arg data} is missing the following required columns: {.val {miss_cols}}."
+    )
   }
-  
+
   # Pre-Processing --------------------------------------------------------
-  
+
   ## reformat columns with special classes, for JSON serialization
-  data <- data |> 
-    data.frame() |> 
+  data <- data |>
+    data.frame() |>
     dplyr::mutate(
       # date-time cols formatted as ISO 8601 strings
-      dplyr::across(dplyr::where(~inherits(.x, "POSIXt")), \(x) format_iso8601(x)),
+      dplyr::across(dplyr::where(~ inherits(.x, "POSIXt")), \(x) {
+        format_iso8601(x)
+      }),
       # convert any columns of class integer64 to string
-      dplyr::across(dplyr::where(~inherits(.x, "integer64")), as.character),
+      dplyr::across(dplyr::where(~ inherits(.x, "integer64")), as.character),
       #drop units
-      dplyr::across(dplyr::where(~inherits(.x, "units")), .fns = \(x) units::set_units(x, NULL))
+      dplyr::across(dplyr::where(~ inherits(.x, "units")), .fns = \(x) {
+        units::set_units(x, NULL)
+      })
     )
-  
+
   # MUST remove col "individual_local_identifier" from additional_cols to avoid
   # those attributes being disPATCHed to ER, which would lead to duplication
   # issues. Remember, "individual_local_identifier" should be treated as an
   # alias to "subject_name" in ER
-  additional_cols <- additional_cols[additional_cols %notin% c("individual_local_identifier")]
-  
+  additional_cols <- additional_cols[
+    additional_cols %notin% c("individual_local_identifier")
+  ]
+
   # Perform PATCH requests (1 per observation) ----------------------------
   logger.info("PATCHing requests for observation updates...")
-  
+
   # generate list of PATCH requests - one per observation
-  patch_req_list <- data |> 
-    dplyr::group_split(er_obs_id) |> 
+  patch_req_list <- data |>
+    dplyr::group_split(er_obs_id) |>
     purrr::map(
-      function(obs){
+      function(obs) {
         api_endpnt <- file.path(api_base_url, "observation", obs$er_obs_id)
-        
+
         body_list <- list(
           locations = list(lat = obs[["lat"]], lon = obs[["lon"]]),
-          exclusion_flags = dplyr::if_else(obs[["cluster_status"]] == "ACTIVE", as.integer64(active_flag), as.integer64(0), missing = as.integer64(0)),
+          exclusion_flags = dplyr::if_else(
+            obs[["cluster_status"]] == "ACTIVE",
+            as.integer64(active_flag),
+            as.integer64(0),
+            missing = as.integer64(0)
+          ),
           additional = as.list(obs[additional_cols])
-        ) |> 
+        ) |>
           # essentially, drop additional field if none is passed
           purrr::compact()
-        
-        httr2::request(api_endpnt) |> 
-          httr2::req_auth_bearer_token(token) |> 
-          httr2::req_method("PATCH") |> 
+
+        httr2::request(api_endpnt) |>
+          httr2::req_auth_bearer_token(token) |>
+          httr2::req_method("PATCH") |>
           httr2::req_headers(
             "Accept" = "application/json",
             "Content-Type" = "application/json"
-          ) |> 
-          httr2::req_body_json(body_list) |> 
-          httr2::req_throttle(capacity = 2000, fill_time_s = 60) |> 
-          httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |> 
+          ) |>
+          httr2::req_body_json(body_list) |>
+          httr2::req_throttle(capacity = 2000, fill_time_s = 60) |>
+          httr2::req_error(body = \(resp) httr2::resp_body_string(resp)) |>
           # apply retry, adding 502 "Bad Gateway" as a transient error (429 and
           # 503 are standard transients); 30s backoff period
           httr2::req_retry(
@@ -1156,54 +1209,52 @@ patch_obs <- function(data,
             is_transient = \(resp) resp_status(resp) %in% c(429, 502, 503, 504),
             backoff = \(resp) 30
           )
-      })
-  
+      }
+    )
+
   # Perform PATCH requests in parallel
   resps <- httr2::req_perform_parallel(patch_req_list, max_active = 10)
-     
+
   ## Log results ------------------------------------------------------
   successful_requests <- resps |> httr2::resps_successes() |> length()
   total_requests <- length(patch_req_list)
-  logger.info(glue::glue("{symbol$tick} {successful_requests} of {total_requests} observations updated successfully."))
-  
+  logger.info(glue::glue(
+    "{symbol$tick} {successful_requests} of {total_requests} observations updated successfully."
+  ))
 }
-
-
 
 
 # //////////////////////////////////////////////////////////////////////////////////
 # er_check_status <- function(api_base_url, token){
-#   
+#
 #   status_endpoint <- paste0(api_base_url, "/status/")
-#   
+#
 #   req <- httr2::request(status_endpoint) |>
 #     httr2::req_headers(
 #       "accept" = "application/json"#,
 #       #"Authorization" = paste0('Bearer ', token)
 #     )
-#   
-#   res <- req |> 
-#     #req_error(is_error = ~ FALSE) |> 
+#
+#   res <- req |>
+#     #req_error(is_error = ~ FALSE) |>
 #     req_perform()
-#   
+#
 #   #httr2::resp_body_json(res)$status$message
-#   
+#
 #   invisible()
-#   
+#
 #   # if(httr2::resp_status(res) == 404){
 #   #   logger.fatal(cli::cli_text("No API found under Hostname {api_hostname}."))
 #   #   cli::cli_abort("No API found under Hostname {api_hostname}.")
 #   # }
-#   
-# } 
-
-
+#
+# }
 
 # ////////////////////////////////////////////////////////////////////////////////
 #'  CLUSTER MATCH FUNCTION
-#' This function is the workhorse for matching master clusters to their updated counterparts. 
+#' This function is the workhorse for matching master clusters to their updated counterparts.
 #' The updating of IDs is not handled here (yet).
-#' 
+#'
 #' @param hist_dt an `<sf>` object, the historic observation dataset from ER,
 #'   annotated with clusters. Must contain the following columns:
 #'    - `"cluster_uuid"`: providing the universally unique ID of a cluster, as stored in
@@ -1223,68 +1274,88 @@ patch_obs <- function(data,
 #'   centroids or geometric medians.
 #' @param plot_results logical, if TRUE, cluster-matching plots will be
 #'   generated as a diagnostic.
-#'   
+#'
 #' @return a list with elements:
-#'   - `matched_master_data`: an `<sf>` object with the same nr of rows as 
+#'   - `matched_master_data`: an `<sf>` object with the same nr of rows as
 #'   `hist_dt` with appended cluster-level info and matching cluster ID in the `new_dt`
 #'   - `match_tbl`: a data frame with match information between the two datasets
-#'   - `match_plot`: (optional) diagnostic plots with visualization of returned 
+#'   - `match_plot`: (optional) diagnostic plots with visualization of returned
 #'   cluster matching
-#'      
-match_sf_clusters <- function(hist_dt,
-                              new_dt,
-                              cluster_id_col,
-                              timestamp_col,
-                              days_thresh = 7,
-                              dist_thresh = units::set_units(100, "metres"),
-                              match_criteria = c("gmedian", "centroid"),
-                              plot_results = FALSE
+#'
+match_sf_clusters <- function(
+  hist_dt,
+  new_dt,
+  cluster_id_col,
+  timestamp_col,
+  days_thresh = 7,
+  dist_thresh = units::set_units(100, "metres"),
+  match_criteria = c("gmedian", "centroid"),
+  plot_results = FALSE
 ) {
-  
   logger.info("Matching Spatial Clusters")
-  
+
   # If historical data is empty, skip everything and return standardized <cluster_matching_results> object
   if (is.null(hist_dt) || nrow(hist_dt) == 0) {
-    
-    logger.warn("   |- Retrieved historical data is empty; skipping matching with newest data.")
-    
+    logger.warn(
+      "   |- Retrieved historical data is empty; skipping matching with newest data."
+    )
+
     # need to force evaluation of cluster_id_col to ensure injection in tibble
     force(cluster_id_col)
-    
+
     out <- structure(
       list(
         matched_hist_dt = dplyr::tibble(
-          cluster_uuid = character(0), cluster_status = character(0), er_subject_name = character(0), er_manufacturer_id = character(0),
-          recorded_at = NA_POSIXct_, er_obs_id = character(0), er_source_id = character(0),
-          {{cluster_id_col}} := character(0), lon = numeric(0), lat = numeric(0)
+          cluster_uuid = character(0),
+          cluster_status = character(0),
+          er_subject_name = character(0),
+          er_manufacturer_id = character(0),
+          recorded_at = NA_POSIXct_,
+          er_obs_id = character(0),
+          er_source_id = character(0),
+          {{ cluster_id_col }} := character(0),
+          lon = numeric(0),
+          lat = numeric(0)
         ) |>
-          sf::st_as_sf(geometry = sf::st_sfc(sf::st_point(c(NA_real_, NA_real_)), crs = sf::st_crs(new_dt))),
-        match_tbl = tibble(master_cluster = NA, new_cluster = unique(na.omit(new_dt[[cluster_id_col]])), `Match Type` = "No Match"),
+          sf::st_as_sf(
+            geometry = sf::st_sfc(
+              sf::st_point(c(NA_real_, NA_real_)),
+              crs = sf::st_crs(new_dt)
+            )
+          ),
+        match_tbl = tibble(
+          master_cluster = NA,
+          new_cluster = unique(na.omit(new_dt[[cluster_id_col]])),
+          `Match Type` = "No Match"
+        ),
         match_plot = NULL
       ),
       class = "cluster_matching_results"
     )
     return(out)
   }
-  
-  
+
   # Input validation ----------------------
-  
+
   # check object class
-  if(!move2::mt_is_move2(new_dt)){
-    cli::cli_abort("{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}.")
+  if (!move2::mt_is_move2(new_dt)) {
+    cli::cli_abort(
+      "{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}."
+    )
   }
-  
-  if(not_null(hist_dt) & !inherits(hist_dt, "sf")){
-    cli::cli_abort("{.arg hist_dt} must be a {.cls sf} object, not {.cls {class(hist_dt)}}.")
+
+  if (not_null(hist_dt) & !inherits(hist_dt, "sf")) {
+    cli::cli_abort(
+      "{.arg hist_dt} must be a {.cls sf} object, not {.cls {class(hist_dt)}}."
+    )
   }
-  
+
   # check hist_st and new_dt dataset is non-null and non-empty
   if (is.null(new_dt) || nrow(new_dt) == 0) {
     cli::cli_abort(c(
       "{.arg new_dt} must a populated dataset.",
-      x = "Provided object is `NULL` or empty.")
-    )
+      x = "Provided object is `NULL` or empty."
+    ))
   }
 
   # Check that match_criteria is valid
@@ -1292,59 +1363,73 @@ match_sf_clusters <- function(hist_dt,
 
   # Check that the cluster_id_col exists in new data
   if (!cluster_id_col %in% names(new_dt)) {
-    cli::cli_abort("Column {.val {cluster_id_col}} must be present in {.arg new_dt}.")
+    cli::cli_abort(
+      "Column {.val {cluster_id_col}} must be present in {.arg new_dt}."
+    )
   }
-  
+
   # Check that the timestamp_col exists in new data and it's of class POSIXt
   if (!timestamp_col %in% names(new_dt)) {
-    cli::cli_abort("Column {.val {timestamp_col}} must be present in {.arg new_dt}.")
-  } else{
-    if(!inherits(new_dt[[timestamp_col]], "POSIXt")){
-      cli::cli_abort("Values in column {.val {timestamp_col}} of {.arg new_dt} must inherit from class {.cls POSIXt}.")
+    cli::cli_abort(
+      "Column {.val {timestamp_col}} must be present in {.arg new_dt}."
+    )
+  } else {
+    if (!inherits(new_dt[[timestamp_col]], "POSIXt")) {
+      cli::cli_abort(
+        "Values in column {.val {timestamp_col}} of {.arg new_dt} must inherit from class {.cls POSIXt}."
+      )
     }
   }
-  
-  
+
   if ("cluster_uuid" %notin% names(hist_dt)) {
-    cli::cli_abort("Column {.val cluster_uuid} must be present in {.arg hist_dt}.")
+    cli::cli_abort(
+      "Column {.val cluster_uuid} must be present in {.arg hist_dt}."
+    )
   }
-  
+
   # Check that column "recorded_at" exists in historic data and it's of class POSIXt
   if ("recorded_at" %notin% names(hist_dt)) {
-    cli::cli_abort("Column {.val recorded_at} must be present in {.arg hist_dt}.")
-  }else{
-    if(!inherits(hist_dt[["recorded_at"]], "POSIXt")){
-      cli::cli_abort("Values in column {.val recorded_at} of {.arg hist_dt} must inherit from class {.cls POSIXt}.")
+    cli::cli_abort(
+      "Column {.val recorded_at} must be present in {.arg hist_dt}."
+    )
+  } else {
+    if (!inherits(hist_dt[["recorded_at"]], "POSIXt")) {
+      cli::cli_abort(
+        "Values in column {.val recorded_at} of {.arg hist_dt} must inherit from class {.cls POSIXt}."
+      )
     }
   }
-  
-  if(!inherits(dist_thresh, "units")){
+
+  if (!inherits(dist_thresh, "units")) {
     cli::cli_abort("{.arg dist_thresh} must be a {.cls units} object.")
   }
-  
-  
+
   # Convert coord. system of old to new
   hist_dt <- sf::st_transform(hist_dt, sf::st_crs(new_dt))
-  
+
   # Valid. Proceed
   logger.info(sprintf(
     "  |- Matching %d clusters in newest data to %d clusters in historical data.",
-    length(na.omit(unique(new_dt[[cluster_id_col]]))), length(na.omit(unique(hist_dt[["cluster_uuid"]])))
+    length(na.omit(unique(new_dt[[cluster_id_col]]))),
+    length(na.omit(unique(hist_dt[["cluster_uuid"]])))
   ))
-  
+
   logger.info(sprintf(
-    "  |- Matching criteria: %s, threshold: %s%s.", match_criteria, as.character(dist_thresh), units::deparse_unit(dist_thresh)
+    "  |- Matching criteria: %s, threshold: %s%s.",
+    match_criteria,
+    as.character(dist_thresh),
+    units::deparse_unit(dist_thresh)
   ))
-  
+
   # Reformat data as necessary ---------------------
   # 1. force cluster IDs as character strings
   # 2. create a temporary columns with homogeneous timestamps (UTC)
-  hist_dt <- hist_dt |> 
+  hist_dt <- hist_dt |>
     dplyr::mutate(
       XTEMPCLUSTER = as.character(cluster_uuid),
       XTIMESTAMP = lubridate::with_tz(recorded_at, tz = "UTC")
-    ) 
-  
+    )
+
   new_dt <- new_dt |>
     dplyr::mutate(
       XTEMPCLUSTER = as.character(.data[[cluster_id_col]]),
@@ -1352,70 +1437,79 @@ match_sf_clusters <- function(hist_dt,
     )
 
   # Determine centroids --------------------
-  
+
   logger.info(sprintf(
-    "  |- Calculating centroids for old and new clusters based on matching criteria: %s.", 
+    "  |- Calculating centroids for old and new clusters based on matching criteria: %s.",
     match_criteria
   ))
-  
+
   # If gmedian, calculate the geometric median
   if (match_criteria == "gmedian") {
-    
-    master_centroids <- hist_dt |> 
+    master_centroids <- hist_dt |>
       dplyr::filter(!is.na(XTEMPCLUSTER)) |>
-      dplyr::group_by(XTEMPCLUSTER) |> 
+      dplyr::group_by(XTEMPCLUSTER) |>
       dplyr::summarise(
-        geometry = calcGMedianSF(geometry), .groups = "drop",
+        geometry = calcGMedianSF(geometry),
+        .groups = "drop",
         starttime = min(XTIMESTAMP, na.rm = TRUE),
         endtime = max(XTIMESTAMP, na.rm = TRUE)
       )
-    
+
     new_centroids <- new_dt |>
       dplyr::filter(!is.na(XTEMPCLUSTER)) |>
-      dplyr::group_by(XTEMPCLUSTER) |> 
+      dplyr::group_by(XTEMPCLUSTER) |>
       dplyr::summarise(
-        geometry = calcGMedianSF(geometry), .groups = "drop",
+        geometry = calcGMedianSF(geometry),
+        .groups = "drop",
         starttime = min(XTIMESTAMP, na.rm = TRUE),
         endtime = max(XTIMESTAMP, na.rm = TRUE)
       )
-    
   } else if (match_criteria == "centroid") {
-    
     # If centroid, calculate the centroid
-    master_centroids <- hist_dt |> 
+    master_centroids <- hist_dt |>
       dplyr::filter(!is.na(XTEMPCLUSTER)) |>
-      dplyr::group_by(XTEMPCLUSTER) |> 
+      dplyr::group_by(XTEMPCLUSTER) |>
       dplyr::summarise(
-        geometry = sf::st_combine(geometry), .groups = "drop",
+        geometry = sf::st_combine(geometry),
+        .groups = "drop",
         starttime = min(XTIMESTAMP, na.rm = TRUE),
         endtime = max(XTIMESTAMP, na.rm = TRUE)
-      ) |> 
+      ) |>
       sf::st_centroid()
-    
+
     new_centroids <- new_dt |>
       dplyr::filter(!is.na(XTEMPCLUSTER)) |>
-      dplyr::group_by(XTEMPCLUSTER) |> 
+      dplyr::group_by(XTEMPCLUSTER) |>
       dplyr::summarise(
-        geometry = sf::st_combine(geometry), .groups = "drop",
+        geometry = sf::st_combine(geometry),
+        .groups = "drop",
         starttime = min(XTIMESTAMP, na.rm = TRUE),
         endtime = max(XTIMESTAMP, na.rm = TRUE)
-      ) |> 
+      ) |>
       sf::st_centroid()
   }
-  
+
   # Match centroids ------------------
-  
+
   # Buffer the new centroids by the matching threshold
   new_centroids_buffered <- sf::st_buffer(new_centroids, dist = dist_thresh)
-  
-  # Now we want a data.frame of matches. Left column contains any master cluster ID, 
-  # right column contains any matching new cluster ID, with multiple entries for 
+
+  # Now we want a data.frame of matches. Left column contains any master cluster ID,
+  # right column contains any matching new cluster ID, with multiple entries for
   # multiple matches.
-  matches <- sf::st_join(master_centroids, new_centroids_buffered, join = sf::st_intersects) |>
-    data.frame() |> 
-    dplyr::select(XTEMPCLUSTER.x, XTEMPCLUSTER.y,
-                  starttime.x, endtime.x,
-                  starttime.y, endtime.y
+  matches <- sf::st_join(
+    master_centroids,
+    new_centroids_buffered,
+    join = sf::st_intersects
+  ) |>
+    data.frame() |>
+    dplyr::select(
+      XTEMPCLUSTER.x,
+      XTEMPCLUSTER.y,
+      starttime.x,
+      endtime.x,
+      starttime.y,
+      endtime.y
     ) |>
     dplyr::rename(
       master_cluster = XTEMPCLUSTER.x,
@@ -1426,35 +1520,42 @@ match_sf_clusters <- function(hist_dt,
       new_end = endtime.y
     ) #|>
   # dplyr::filter(!is.na(master_cluster) & !is.na(new_cluster)) # Remove any rows where no match was found
-  
-  
+
   # If we have a valid matching threshold, remove any matches that are outside
   # the threshold
   if (!is.na(days_thresh) && days_thresh > 0) {
-    
-    time_matches <- matches |> 
+    time_matches <- matches |>
       # We buffer the interval by half of days_thresh (rounded) and check overlap
       dplyr::mutate(
-        master_interval = lubridate::interval(master_start - lubridate::days(floor(days_thresh/2)), master_end + lubridate::days(ceiling(days_thresh/2))),
-        new_interval = lubridate::interval(new_start - lubridate::days(floor(days_thresh/2)), new_end + lubridate::days(ceiling(days_thresh/2))),
+        master_interval = lubridate::interval(
+          master_start - lubridate::days(floor(days_thresh / 2)),
+          master_end + lubridate::days(ceiling(days_thresh / 2))
+        ),
+        new_interval = lubridate::interval(
+          new_start - lubridate::days(floor(days_thresh / 2)),
+          new_end + lubridate::days(ceiling(days_thresh / 2))
+        ),
         VALID_TIME = lubridate::int_overlaps(master_interval, new_interval)
-      ) |> 
+      ) |>
       # If the time match is invalid, delete the entry
-      dplyr::filter(VALID_TIME) |> 
+      dplyr::filter(VALID_TIME) |>
       dplyr::select(master_cluster, new_cluster)
-    
+
     logger.info(sprintf(
       "  |- Removing %d matches that do not meet the time threshold of %d days.",
-      nrow(matches) - nrow(time_matches), days_thresh
+      nrow(matches) - nrow(time_matches),
+      days_thresh
     ))
-    
+
     # And add a new entry for any master_clusters missing
-    missing_clusters <- hist_dt$XTEMPCLUSTER[!hist_dt$XTEMPCLUSTER %in% time_matches$master_cluster] |> 
-      unique() |> 
+    missing_clusters <- hist_dt$XTEMPCLUSTER[
+      !hist_dt$XTEMPCLUSTER %in% time_matches$master_cluster
+    ] |>
+      unique() |>
       # drop NA
-      na.omit() |> 
-      as.vector() 
-    
+      na.omit() |>
+      as.vector()
+
     if (length(missing_clusters) > 0) {
       missing_clusters_df <- data.frame(
         master_cluster = missing_clusters,
@@ -1464,78 +1565,96 @@ match_sf_clusters <- function(hist_dt,
     } # debug
   } else {
     # If not handling times, just get down to the essential columns
-    matches <- matches |> 
-      dplyr::select(master_cluster, new_cluster) |> 
-      dplyr::distinct() 
+    matches <- matches |>
+      dplyr::select(master_cluster, new_cluster) |>
+      dplyr::distinct()
   }
-  
-  
+
   # Filter to double-matches, where an old cluster is matched to multiple new clusters
   double_matches <- matches |>
     dplyr::group_by(master_cluster) |>
     dplyr::filter(dplyr::n() > 1) |>
     dplyr::ungroup()
-  
+
   direct_matches <- matches |>
-    dplyr::filter(!(master_cluster %in% double_matches$master_cluster)) 
-  
-  nonmatches <- matches |> 
-    dplyr::filter(!is.na(master_cluster) & is.na(new_cluster)) |> 
-    dplyr::pull(master_cluster) 
-  
+    dplyr::filter(!(master_cluster %in% double_matches$master_cluster))
+
+  nonmatches <- matches |>
+    dplyr::filter(!is.na(master_cluster) & is.na(new_cluster)) |>
+    dplyr::pull(master_cluster)
+
   logger.info(sprintf(
-    "  |- Found %d master clusters that do not match any new clusters.", length(nonmatches)
+    "  |- Found %d master clusters that do not match any new clusters.",
+    length(nonmatches)
   ))
-  
+
   if (any(nonmatches %in% double_matches$master_cluster)) {
-    cli::cli_abort("Some master clusters simultaneously have no matches and double matches. This is conflicting.")
+    cli::cli_abort(
+      "Some master clusters simultaneously have no matches and double matches. This is conflicting."
+    )
   }
-  
+
   logger.info(sprintf(
-    "  |- Found %d matches, of which %d are double-matches.", nrow(matches), nrow(double_matches)
+    "  |- Found %d matches, of which %d are double-matches.",
+    nrow(matches),
+    nrow(double_matches)
   ))
-  
+
   # Performing observation-level match ---------------------
-  
+
   # Resolve matches down to observation level, done by master cluster
-  matched_old_obs <- hist_dt |> 
-    dplyr::left_join(direct_matches, by = c("XTEMPCLUSTER" = "master_cluster")) |> 
+  matched_old_obs <- hist_dt |>
+    dplyr::left_join(
+      direct_matches,
+      by = c("XTEMPCLUSTER" = "master_cluster")
+    ) |>
     # group and split by master cluster, to ensure correct processing
-    dplyr::group_by(XTEMPCLUSTER) |> 
-    dplyr::group_split() |> 
+    dplyr::group_by(XTEMPCLUSTER) |>
+    dplyr::group_split() |>
     # handling double matches
     purrr::modify(
       # anonymous function ensures master cluster points are assigned to
       # matched new clusters based on centroids proximity
-      function(x){
+      function(x) {
         master_clst_id <- unique(x$XTEMPCLUSTER)
-        if(master_clst_id %in% double_matches$master_cluster){
+        if (master_clst_id %in% double_matches$master_cluster) {
           #browser()
-          master_cntr <- filter(master_centroids, XTEMPCLUSTER == master_clst_id)
-          dbl_new_ids <- filter(double_matches, master_cluster == master_clst_id) |> dplyr::pull(new_cluster)
+          master_cntr <- filter(
+            master_centroids,
+            XTEMPCLUSTER == master_clst_id
+          )
+          dbl_new_ids <- filter(
+            double_matches,
+            master_cluster == master_clst_id
+          ) |>
+            dplyr::pull(new_cluster)
           dbl_new_cntr <- filter(new_centroids, XTEMPCLUSTER %in% dbl_new_ids)
-          nearest_new_cntr <- dbl_new_cntr$XTEMPCLUSTER[sf::st_nearest_feature(x, dbl_new_cntr)] # variant where points of master are split between new clusters based on centroid proximity
+          nearest_new_cntr <- dbl_new_cntr$XTEMPCLUSTER[sf::st_nearest_feature(
+            x,
+            dbl_new_cntr
+          )] # variant where points of master are split between new clusters based on centroid proximity
           # nearest_new_cntr <- dbl_new_cntr$XTEMPCLUSTER[sf::st_nearest_feature(master_cntr, dbl_new_cntr)] # variant where ALL points of master are allocated to single new cluster based on centroid proximity
-          x <- mutate(x, new_cluster = nearest_new_cntr)  
+          x <- mutate(x, new_cluster = nearest_new_cntr)
         }
         return(x)
-      }) |> 
+      }
+    ) |>
     # handling no matches
     purrr::imodify(
-      function(x, idx){
+      function(x, idx) {
         hist_clust_id <- unique(x$XTEMPCLUSTER)
-        if(hist_clust_id %in% nonmatches){
+        if (hist_clust_id %in% nonmatches) {
           x <- mutate(x, new_cluster = paste0("UNMATCHED.", idx))
         }
         return(x)
-      }) |>
+      }
+    ) |>
     dplyr::bind_rows() |>
     dplyr::arrange(recorded_at)
 
-  
   # Create a lookup table for matches to output
-  final_matches <- matched_old_obs |> 
-    data.frame() |> 
+  final_matches <- matched_old_obs |>
+    data.frame() |>
     dplyr::select(c("XTEMPCLUSTER", "new_cluster")) |>
     dplyr::rename(
       master_cluster = XTEMPCLUSTER
@@ -1543,22 +1662,29 @@ match_sf_clusters <- function(hist_dt,
     dplyr::mutate(
       # This is Partial if the old cluster is in double_matches,
       # otherwise it is Full
-      `Match Type` = ifelse(master_cluster %in% double_matches$master_cluster, "Partial", "Full"),
+      `Match Type` = ifelse(
+        master_cluster %in% double_matches$master_cluster,
+        "Partial",
+        "Full"
+      ),
       # If either cluster column is NA, overwrite `Match Type` as "No Match"
       # `Match Type` = ifelse(is.na(old_cluster) | is.na(new_cluster), "No Match", `Match Type`)
       `Match Type` = ifelse(is.na(new_cluster), "No Match", `Match Type`),
-      # If the master cluster is nonmatched, mark it 
-      `Match Type` = ifelse(master_cluster %in% nonmatches, "No Match", `Match Type`)
-    ) |> 
+      # If the master cluster is nonmatched, mark it
+      `Match Type` = ifelse(
+        master_cluster %in% nonmatches,
+        "No Match",
+        `Match Type`
+      )
+    ) |>
     dplyr::distinct() # Ensure distinct matches
-  
-  
+
   # Second assessment of `Match type` on "Partial" master clusters.
   # Identify "Partial" (double-matched) master clusters where all their
   # points were assigned to a single new cluster in the observation-level matching
-  # step performed above (based on proximity to new cluster's centroid). 
+  # step performed above (based on proximity to new cluster's centroid).
   # Re-classify these as "Full" matches.
-  final_matches <- final_matches |> 
+  final_matches <- final_matches |>
     dplyr::mutate(
       `Match Type` = dplyr::replace_when(
         `Match Type`,
@@ -1568,149 +1694,203 @@ match_sf_clusters <- function(hist_dt,
       ),
       .by = master_cluster
     )
-  
-  
+
   # Add to final_matches any new clusters that have no previous match
-  unmatched_new_clusters <- new_centroids |> 
-    data.frame() |> 
-    dplyr::filter(!XTEMPCLUSTER %in% final_matches$new_cluster) |> 
+  unmatched_new_clusters <- new_centroids |>
+    data.frame() |>
+    dplyr::filter(!XTEMPCLUSTER %in% final_matches$new_cluster) |>
     dplyr::mutate(
       master_cluster = NA_character_,
       `Match Type` = "No Match"
-    ) |> 
+    ) |>
     dplyr::select(master_cluster, new_cluster = XTEMPCLUSTER, `Match Type`)
-  
+
   logger.info(sprintf(
-    "  |- Found %d unmatched new clusters. Adding to matchtable", nrow(unmatched_new_clusters)
+    "  |- Found %d unmatched new clusters. Adding to matchtable",
+    nrow(unmatched_new_clusters)
   ))
-  
+
   final_matches <- final_matches |>
     dplyr::bind_rows(unmatched_new_clusters) |>
     dplyr::filter(!is.na(master_cluster) | !is.na(new_cluster)) |> # to get rid of NA -> NA
     dplyr::distinct() # Ensure distinct matches
-  
-  
+
   # Give the cluster column back its original name
-  outdata <- matched_old_obs |> 
+  outdata <- matched_old_obs |>
     dplyr::mutate(
       !!cluster_id_col := new_cluster
-    ) |> 
-    dplyr::rename(master_cluster = XTEMPCLUSTER) |> 
+    ) |>
+    dplyr::rename(master_cluster = XTEMPCLUSTER) |>
     dplyr::select(
       -any_of(c("XTEMPCLUSTER", "XTIMESTAMP", "new_cluster"))
     )
-  
-  
+
   # Plots ------------------
-  
-  # If plot_results is TRUE, we want a plot of arrows 
-  # originating from the old cluster 
+
+  # If plot_results is TRUE, we want a plot of arrows
+  # originating from the old cluster
   # and pointing to the new cluster
   if (plot_results) {
-    
     print("Preparing output cluster-matching plots")
-    
+
     # Create a plot of the old and new clusters
-    old_coords <- master_centroids |> 
-      cbind(st_coordinates(master_centroids)) |> 
-      as.data.frame() |> 
+    old_coords <- master_centroids |>
+      cbind(st_coordinates(master_centroids)) |>
+      as.data.frame() |>
       dplyr::rename(
         master_cluster = XTEMPCLUSTER,
-        Xold = X, Yold = Y
-      ) |> 
+        Xold = X,
+        Yold = Y
+      ) |>
       dplyr::select(
         all_of(c("master_cluster", "Xold", "Yold"))
       )
-    new_coords <- new_centroids |> 
-      cbind(sf::st_coordinates(new_centroids)) |> 
-      as.data.frame() |> 
+    new_coords <- new_centroids |>
+      cbind(sf::st_coordinates(new_centroids)) |>
+      as.data.frame() |>
       dplyr::rename(
         new_cluster = XTEMPCLUSTER,
-        Xnew = X, Ynew = Y
-      ) |> 
+        Xnew = X,
+        Ynew = Y
+      ) |>
       dplyr::select(
         all_of(c("new_cluster", "Xnew", "Ynew"))
       )
-    
+
     # Join these to the final_matches
-    plot_matches <- final_matches |> 
-      dplyr::left_join(old_coords, by = "master_cluster") |> 
+    plot_matches <- final_matches |>
+      dplyr::left_join(old_coords, by = "master_cluster") |>
       dplyr::left_join(new_coords, by = "new_cluster")
-    
+
     # And plot out
     # Top-level cluster plotting
-    matchplot <- ggplot2::ggplot() + 
+    matchplot <- ggplot2::ggplot() +
       ggplot2::theme_bw() +
-      ggplot2::geom_sf(data = new_centroids_buffered |> dplyr::filter(XTEMPCLUSTER %in% plot_matches$new_cluster), fill = NA, alpha = 0.15, linewidth = 0.1,
-                       ggplot2::aes(color = "New Cluster", linetype = "Connection Radius")
+      ggplot2::geom_sf(
+        data = new_centroids_buffered |>
+          dplyr::filter(XTEMPCLUSTER %in% plot_matches$new_cluster),
+        fill = NA,
+        alpha = 0.15,
+        linewidth = 0.1,
+        ggplot2::aes(color = "New Cluster", linetype = "Connection Radius")
       ) +
-      ggplot2::geom_segment(data = plot_matches |> dplyr::filter(!is.na(new_cluster) & !is.na(master_cluster)),
-                   ggplot2::aes(x = Xold, y = Yold, xend = Xnew, yend = Ynew, linetype = `Match Type`), linewidth = 0.6,
-                   arrow = ggplot2::arrow(length = ggplot2::unit(0.2, "cm")), size = 0.5) +
-      ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(master_cluster)), 
-                          ggplot2::aes(x = Xold, y = Yold, label = master_cluster, color = "Master Cluster", fill = `Match Type`), 
-                          size = 3) +
-      ggplot2::geom_label(data = dplyr::filter(plot_matches, !is.na(new_cluster)),
-                         ggplot2::aes(x = Xnew, y = Ynew, label = new_cluster, color = "New Cluster",fill = `Match Type`), 
-                         size = 3) +
+      ggplot2::geom_segment(
+        data = plot_matches |>
+          dplyr::filter(!is.na(new_cluster) & !is.na(master_cluster)),
+        ggplot2::aes(
+          x = Xold,
+          y = Yold,
+          xend = Xnew,
+          yend = Ynew,
+          linetype = `Match Type`
+        ),
+        linewidth = 0.6,
+        arrow = ggplot2::arrow(length = ggplot2::unit(0.2, "cm")),
+        size = 0.5
+      ) +
+      ggplot2::geom_label(
+        data = dplyr::filter(plot_matches, !is.na(master_cluster)),
+        ggplot2::aes(
+          x = Xold,
+          y = Yold,
+          label = master_cluster,
+          color = "Master Cluster",
+          fill = `Match Type`
+        ),
+        size = 3
+      ) +
+      ggplot2::geom_label(
+        data = dplyr::filter(plot_matches, !is.na(new_cluster)),
+        ggplot2::aes(
+          x = Xnew,
+          y = Ynew,
+          label = new_cluster,
+          color = "New Cluster",
+          fill = `Match Type`
+        ),
+        size = 3
+      ) +
       ggplot2::scale_color_manual(
         name = "Cluster Type",
-        values = c("Match" = "black", "Master Cluster" = "blue", "New Cluster" = "red")) +
+        values = c(
+          "Match" = "black",
+          "Master Cluster" = "blue",
+          "New Cluster" = "red"
+        )
+      ) +
       ggplot2::scale_fill_manual(
         name = "Unmatched Clusters",
-        values = c("Full" = "white", "Partial" = "white", "No Match" = "yellow")) +
+        values = c("Full" = "white", "Partial" = "white", "No Match" = "yellow")
+      ) +
       ggplot2::scale_linetype_manual(
         name = "Match Type",
-        values = c("Full" = "solid", "Partial" = "dashed", "Connection Radius" = "dotted")) +
-      ggplot2::xlab("X") + ggplot2::ylab("Y") +
+        values = c(
+          "Full" = "solid",
+          "Partial" = "dashed",
+          "Connection Radius" = "dotted"
+        )
+      ) +
+      ggplot2::xlab("X") +
+      ggplot2::ylab("Y") +
       ggplot2::ggtitle("Cluster association map")
     # coord_fixed()
-    
+
     # Point-level cluster plotting
-    prep_pts <- outdata |> 
-      cbind(sf::st_coordinates(outdata)) |> 
-      data.frame() |> 
+    prep_pts <- outdata |>
+      cbind(sf::st_coordinates(outdata)) |>
+      data.frame() |>
       dplyr::rename(
         XTEMPCLUSTER = !!rlang::sym(cluster_id_col),
-        pointX = X, pointY = Y) |> 
-      # dplyr::filter(!is.na(XTEMPCLUSTER) & XTEMPCLUSTER != 0) |> 
+        pointX = X,
+        pointY = Y
+      ) |>
+      # dplyr::filter(!is.na(XTEMPCLUSTER) & XTEMPCLUSTER != 0) |>
       dplyr::left_join(
         new_centroids |>
           cbind(st_coordinates(new_centroids)) |>
           data.frame() |>
           rename(clusterX = X, clusterY = Y),
         by = "XTEMPCLUSTER"
-      ) |> 
+      ) |>
       dplyr::left_join(
         master_centroids |>
           cbind(st_coordinates(master_centroids)) |>
           data.frame() |>
-          dplyr::filter(!is.na(XTEMPCLUSTER) & XTEMPCLUSTER != 0) |> 
-          rename(clusterXold = X, clusterYold = Y,
-                 master_cluster = XTEMPCLUSTER
+          dplyr::filter(!is.na(XTEMPCLUSTER) & XTEMPCLUSTER != 0) |>
+          rename(
+            clusterXold = X,
+            clusterYold = Y,
+            master_cluster = XTEMPCLUSTER
           ),
         by = "master_cluster"
-      ) 
-    
-    pointplot <- ggplot2::ggplot() + 
+      )
+
+    pointplot <- ggplot2::ggplot() +
       ggplot2::theme_bw() +
       ggplot2::geom_segment(
-        data = prep_pts |> dplyr::filter(!is.na(master_cluster)), 
+        data = prep_pts |> dplyr::filter(!is.na(master_cluster)),
         ggplot2::aes(
-          x = pointX, y = pointY,
-          xend = clusterXold, yend = clusterYold, color = "Master"
+          x = pointX,
+          y = pointY,
+          xend = clusterXold,
+          yend = clusterYold,
+          color = "Master"
         ),
         linetype = "dashed"
       ) +
       ggplot2::geom_segment(
-        data = prep_pts |> dplyr::filter(!is.na(master_cluster) & !is.na(XTEMPCLUSTER)),
+        data = prep_pts |>
+          dplyr::filter(!is.na(master_cluster) & !is.na(XTEMPCLUSTER)),
         ggplot2::aes(
-          x = pointX, y = pointY,
-          xend = clusterX, yend = clusterY, color = "New"
+          x = pointX,
+          y = pointY,
+          xend = clusterX,
+          yend = clusterY,
+          color = "New"
         )
       ) +
       ggplot2::geom_point(
-        data = prep_pts |> dplyr::filter(is.na(XTEMPCLUSTER)), 
+        data = prep_pts |> dplyr::filter(is.na(XTEMPCLUSTER)),
         ggplot2::aes(x = pointX, y = pointY, color = "No Cluster"),
         shape = 4
       ) +
@@ -1718,60 +1898,66 @@ match_sf_clusters <- function(hist_dt,
         name = "Cluster Type",
         values = c("Master" = "blue", "New" = "red", "No Cluster" = "black")
       ) +
-      ggplot2::coord_fixed() + 
-      ggplot2::xlab("X") + ggplot2::ylab("Y") +
+      ggplot2::coord_fixed() +
+      ggplot2::xlab("X") +
+      ggplot2::ylab("Y") +
       ggplot2::ggtitle("Master Clusters [mapped to new centroids]")
-    
+
     allplot <- cowplot::plot_grid(
-      matchplot, pointplot,
-      ncol = 2, 
+      matchplot,
+      pointplot,
+      ncol = 2,
       labels = c("A", "B"),
       label_size = 12
     )
-    
-  } else {allplot <- NULL}
-  
+  } else {
+    allplot <- NULL
+  }
+
   logger.info(sprintf(
-    "  |- Matched %d clusters between old data to new data.", nrow(final_matches)
+    "  |- Matched %d clusters between old data to new data.",
+    nrow(final_matches)
   ))
-  
-  
-  # output  
+
+  # output
   structure(
-    list(matched_hist_dt = outdata, match_tbl = final_matches, match_plot = allplot), 
+    list(
+      matched_hist_dt = outdata,
+      match_tbl = final_matches,
+      match_plot = allplot
+    ),
     class = "cluster_matching_results"
   )
-  
 }
 
 
 # ///////////////////////////////////////////////////////////////////////////////
 calcGMedianSF <- function(data) {
-  if (st_geometry_type(data[1,]) == "POINT") {
+  if (st_geometry_type(data[1, ]) == "POINT") {
     med <- st_coordinates(data)
-    
-    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
+
+    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>%
+      as.data.frame() %>%
       rename(x = V1, y = V2) %>%
       st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
       st_geometry()
   }
-  
-  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
-    med <- data %>% 
+
+  if (st_geometry_type(data[1, ]) == "MULTIPOINT") {
+    med <- data %>%
       st_coordinates() %>%
       as.data.frame() %>%
       group_by(L1) %>%
-      group_map( ~st_point(Gmedian::Weiszfeld(.)$median) ) |> 
+      group_map(~ st_point(Gmedian::Weiszfeld(.)$median)) |>
       st_as_sfc(crs = st_crs(data))
   }
   return(med)
 }
 
 
-
 # ////////////////////////////////////////////////////////////////////////////////
-#' Cluster-aware Merging of Historic and New observations 
-#'   
+#' Cluster-aware Merging of Historic and New observations
+#'
 #' @param matched_dt an `<cluster_matching_results>` object, the output from
 #'   `match_sf_clusters()` containing the matching between the historical data
 #'   (fetched from ER) and the most recent workflow-processed data (here also
@@ -1791,112 +1977,128 @@ calcGMedianSF <- function(data) {
 #'   cluster's most recent observation and the overall most recent observation,
 #'   the cluster will be marked as CLOSED. Otherwise, it will be ACTIVE.
 #'   Non-clustered obs will be NA.
-#'        
+#'
 #' @details
 #' In addition merging the two datasets, it performs the following tasks:
 #'  * Clusters status update ("ACTIVE" vs "CLOSED")
 #'  * UUID issuing for new clusters, while ensuring stable UUIDs for historical clusters
-#'  * Annotate merged data into PATCH and POST observations ready to be sent to the ER server. 
-#'  
+#'  * Annotate merged data into PATCH and POST observations ready to be sent to the ER server.
+#'
 #' @return
 #' An `<sf>` object with updated cluster information and API request requirements
-#'  
-merge_and_update <- function(matched_dt,
-                             new_dt,
-                             cluster_id_col,
-                             timestamp_col,
-                             store_cols,
-                             active_days_thresh = 14
+#'
+merge_and_update <- function(
+  matched_dt,
+  new_dt,
+  cluster_id_col,
+  timestamp_col,
+  store_cols,
+  active_days_thresh = 14
 ) {
-  
   # Input validation  --------------------------
   # check object class
-  if(!move2::mt_is_move2(new_dt)){
-    cli::cli_abort("{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}.")
+  if (!move2::mt_is_move2(new_dt)) {
+    cli::cli_abort(
+      "{.arg new_dt} must be a {.cls move2} object, not {.cls {class(new_dt)}}."
+    )
   }
-  
-  if(!inherits(matched_dt, "cluster_matching_results")){
+
+  if (!inherits(matched_dt, "cluster_matching_results")) {
     cli::cli_abort(c(
       "{.arg matched_dt} must be an object of class {.cls cluster_matching_results}, not {.cls {class(matched_dt)}}.",
       "i" = "Use {.fn match_sf_clusters} to produce the expected {.cls cluster_matching_results} object."
     ))
   }
-  
+
   matched_hist_dt <- matched_dt$matched_hist_dt
   match_tbl <- matched_dt$match_tbl
-  
+
   ## Check that required columns are present
   new_req_cols <- c(cluster_id_col, timestamp_col, "lon", "lat")
   new_miss_cols <- new_req_cols[new_req_cols %notin% names(new_dt)]
   if (length(new_miss_cols) > 0) {
-    cli::cli_abort("{.arg new_dt} is missing the following required columns: {.val {new_miss_cols}}.")
+    cli::cli_abort(
+      "{.arg new_dt} is missing the following required columns: {.val {new_miss_cols}}."
+    )
   }
-  
+
   hist_req_cols <- c(
-    cluster_id_col, "cluster_uuid", "cluster_status", "er_subject_name", 
-    "er_manufacturer_id", "recorded_at", "er_obs_id", "er_source_id", "lon", "lat"
+    cluster_id_col,
+    "cluster_uuid",
+    "cluster_status",
+    "er_subject_name",
+    "er_manufacturer_id",
+    "recorded_at",
+    "er_obs_id",
+    "er_source_id",
+    "lon",
+    "lat"
   )
   hist_miss_cols <- hist_req_cols[hist_req_cols %notin% names(matched_hist_dt)]
   if (length(hist_miss_cols) > 0) {
-    cli::cli_abort("{.arg matched_hist_dt} is missing the following required columns: {.val {hist_miss_cols}}.")
+    cli::cli_abort(
+      "{.arg matched_hist_dt} is missing the following required columns: {.val {hist_miss_cols}}."
+    )
   }
-  
+
   # Initialise -----------------------
   logger.info("Performing data merging")
-  logger.info(sprintf("  |- Sorting %d masterobs and %d newobs", nrow(matched_hist_dt), nrow(new_dt)))
-  
+  logger.info(sprintf(
+    "  |- Sorting %d masterobs and %d newobs",
+    nrow(matched_hist_dt),
+    nrow(new_dt)
+  ))
 
   # Homogenise datasets for binding ------------------------
   # i.e. coerce column formatting of historic dataset to new data
-  
+
   ## Bring subject- tag- study- level IDs attributes from to events-table
   new_dt <- new_dt |>
-    move2::mt_as_event_attribute(dplyr::any_of(mv2_track_cols)) |> 
+    move2::mt_as_event_attribute(dplyr::any_of(mv2_track_cols)) |>
     # bind track ID
     dplyr::mutate(track_id = move2::mt_track_id(new_dt))
-  
-  ## Rename ER-based key "Observation" columns in historic dataset 
-  matched_hist_dt <- matched_hist_dt |> 
+
+  ## Rename ER-based key "Observation" columns in historic dataset
+  matched_hist_dt <- matched_hist_dt |>
     # 1st ensure that, if key cols are present in hist dataset (because they've
     # been chosen by user for storage via top-level `store_cols_str`), they
     # are dropped before renaming
     dplyr::select(
       !dplyr::any_of(c("individual_local_identifier", timestamp_col))
-    ) |> 
+    ) |>
     dplyr::rename(
       individual_local_identifier = er_subject_name,
-      {{timestamp_col}} := recorded_at
+      {{ timestamp_col }} := recorded_at
     )
-  
-  # Coerce classes of columns in historic data to meet those in new data 
+
+  # Coerce classes of columns in historic data to meet those in new data
   matched_hist_dt <- coerce_col_types(matched_hist_dt, new_dt)
-  
+
   ## Add cluster provenance
   matched_hist_dt <- matched_hist_dt |>
     dplyr::mutate(
       CLUSTERORIGIN = "MASTER",
-      {{cluster_id_col}} := as.character(.data[[cluster_id_col]])
+      {{ cluster_id_col }} := as.character(.data[[cluster_id_col]])
     )
-  
+
   new_dt <- new_dt |>
     dplyr::mutate(
       CLUSTERORIGIN = "NEW",
-      {{cluster_id_col}} := as.character(.data[[cluster_id_col]])
+      {{ cluster_id_col }} := as.character(.data[[cluster_id_col]])
     )
-  
-  
+
   # Row Bind Datasets ----------------------------------------------------------
   ## Note: row bind returns an <sf> object - i.e. the track-table is dropped out
-  alldata <- dplyr::bind_rows(matched_hist_dt, new_dt) |> 
+  alldata <- dplyr::bind_rows(matched_hist_dt, new_dt) |>
     dplyr::mutate(
       # Create temporary clusters to store essential info
       XTEMPCLUSTERCOL = .data[[cluster_id_col]],
       XTEMPTIMECOL = .data[[timestamp_col]],
       XTEMPIDCOL = individual_local_identifier
     )
-  
+
   # Group by timestamp, longitude/latitude and animal ID to identify duplicates
-  alldata <- alldata |> 
+  alldata <- alldata |>
     dplyr::group_by(XTEMPTIMECOL, XTEMPIDCOL, lon, lat) |>
     dplyr::mutate(
       # Create a unique identifier for each group
@@ -1904,26 +2106,33 @@ merge_and_update <- function(matched_dt,
       # Count the number of observations in each group
       XTEMPCOUNT = dplyr::n()
     )
-  
+
   # If any counts are 3, we have a problem. Flag a warning
   if (any(alldata$XTEMPCOUNT > 2)) {
-    logger.warn(sprintf("  |- Found %d groups with more than 2 observations. This may indicate an issue with the data.", sum(alldata$XTEMPCOUNT > 2)))
+    logger.warn(sprintf(
+      "  |- Found %d groups with more than 2 observations. This may indicate an issue with the data.",
+      sum(alldata$XTEMPCOUNT > 2)
+    ))
   }
-  
-  logger.info(sprintf("  |- Found %d observations, of which %d have duplicates", nrow(alldata), sum(alldata$XTEMPCOUNT > 1)))
-  
+
+  logger.info(sprintf(
+    "  |- Found %d observations, of which %d have duplicates",
+    nrow(alldata),
+    sum(alldata$XTEMPCOUNT > 1)
+  ))
+
   # Merge data ----------------------------------------------------------
   # Whenever COUNT > 1, we have a duplicate observation which consists of an
   # observation from ER and an observation from MoveApps. The ER observation
   # will have a observation_id, which we want to retain. However, we want to
   # retain ALL other data in most recent data to the ER observation, as it may
   # have been updated.
-  merged_dt <- alldata |> 
+  merged_dt <- alldata |>
     dplyr::rename(
       cluster_uuid_hist = cluster_uuid,
       cluster_status_hist = cluster_status
-    ) |> 
-    dplyr::group_by(XTEMPUNIQUEID) |> 
+    ) |>
+    dplyr::group_by(XTEMPUNIQUEID) |>
     dplyr::mutate(
       # Duplicate the non-NA observation_id and source_id across the whole group
       er_source_id = dplyr::first(er_source_id, na_rm = TRUE),
@@ -1936,26 +2145,25 @@ merge_and_update <- function(matched_dt,
       STORECOLSMODIFIED = dplyr::n_distinct(across(any_of(store_cols))) > 1,
       # tag new obs - will be those with an NA as observation_id.
       NEWOBS = ifelse(is.na(er_obs_id), TRUE, FALSE)
-    ) |> 
+    ) |>
     dplyr::filter(
       CLUSTERORIGIN == "NEW" | (CLUSTERORIGIN == "MASTER" & XTEMPCOUNT == 1)
-    ) |> 
+    ) |>
     dplyr::arrange(XTEMPIDCOL, XTEMPTIMECOL)
-  
 
   # Classify Cluster Status -------------------------------------
-  # Now we want to rewrite the cluster_status column to determine whether a cluster is 
+  # Now we want to rewrite the cluster_status column to determine whether a cluster is
   # ACTIVE or CLOSED. This will be determined by the most recent timestamp in all clusters:
   # if it was within active_days_thresh, then the cluster is ACTIVE, otherwise it is CLOSED.
-  most_recent_obs <- new_dt |> 
-    dplyr::ungroup() |> 
+  most_recent_obs <- new_dt |>
+    dplyr::ungroup() |>
     dplyr::pull(.data[[timestamp_col]]) |>
     max(na.rm = TRUE)
-  
-  merged_dt <- merged_dt |> 
+
+  merged_dt <- merged_dt |>
     dplyr::group_by(
       XTEMPCLUSTERCOL
-    ) |> 
+    ) |>
     dplyr::mutate(
       # Determine the most recent timestamp in the cluster
       MAXTIMESTAMP = max(XTEMPTIMECOL, na.rm = TRUE),
@@ -1969,16 +2177,19 @@ merge_and_update <- function(matched_dt,
       cluster_status = ifelse(is.na(XTEMPCLUSTERCOL), NA, cluster_status),
       #cluster_status = ifelse(cluster_status_hist == "CLOSED", "CLOSED", cluster_status),
       # flag a status change - clusters can go from ACTIVE to CLOSED
-      CLUSTERSTATUSCHANGED = if_else(cluster_status != cluster_status_hist, TRUE, FALSE)
-    ) |> 
+      CLUSTERSTATUSCHANGED = if_else(
+        cluster_status != cluster_status_hist,
+        TRUE,
+        FALSE
+      )
+    ) |>
     dplyr::ungroup()
-  
-  
+
   # Handle Cluster UUIDs  -------------------------------------------
   ## New UUIDs issued based on match table, with data grouped by hist cluster
   ## IDs (here provided in col `master_cluster`, as a legacy of
   ## `match_sf_clusters()`)
-  
+
   # get distribution of points in hist cluster across the matched new clusters,
   # relevant in 1:many
   matched_pnt_dist <- matched_hist_dt |>
@@ -1986,115 +2197,129 @@ merge_and_update <- function(matched_dt,
     dplyr::filter(!is.na(cluster_uuid)) |>
     dplyr::group_by(cluster_uuid) |>
     dplyr::count(.data[[cluster_id_col]], name = "n_pnts")
-  
+
   # handle UUIDs
-  match_tbl <- match_tbl |> 
+  match_tbl <- match_tbl |>
     # merge and sort matches by nr of points
-    dplyr::left_join(matched_pnt_dist, by = c("new_cluster" = cluster_id_col, "master_cluster" = "cluster_uuid")) |> 
-    dplyr::group_by(master_cluster) |> 
-    dplyr::arrange(desc(n_pnts), .by_group = TRUE) |> 
+    dplyr::left_join(
+      matched_pnt_dist,
+      by = c("new_cluster" = cluster_id_col, "master_cluster" = "cluster_uuid")
+    ) |>
+    dplyr::group_by(master_cluster) |>
+    dplyr::arrange(desc(n_pnts), .by_group = TRUE) |>
     dplyr::mutate(
       cluster_uuid = dplyr::case_when(
         # if present, the hist UUID is retained for the first match (i.e. that with most matched points)
-        dplyr::row_number() == 1 & !is.na(master_cluster) ~ dplyr::first(master_cluster, na_rm = TRUE),
+        dplyr::row_number() == 1 & !is.na(master_cluster) ~ dplyr::first(
+          master_cluster,
+          na_rm = TRUE
+        ),
         # next, dealing with 1:many matches
-        dplyr::row_number() > 1 & !is.na(master_cluster) ~ generate_uuid(dplyr::n()),
+        dplyr::row_number() > 1 &
+          !is.na(master_cluster) ~ generate_uuid(dplyr::n()),
         # issuing new UUIDs for new clusters (i.e. no matches)
         is.na(master_cluster) ~ generate_uuid(dplyr::n())
       )
-    ) |> 
+    ) |>
     dplyr::ungroup()
-  
-  
+
   # Handle cluster fusion events ------------------------------
-  
-  # It's entirely possible that 2x old clusters match 1x new, which breaks 
+
+  # It's entirely possible that 2x old clusters match 1x new, which breaks
   # the below left-join. We can handle this by retaining just one old ID.
-  fusion_events <- match_tbl |> 
-    dplyr::group_by(new_cluster) |> 
-    dplyr::filter(n() > 1) |> 
+  fusion_events <- match_tbl |>
+    dplyr::group_by(new_cluster) |>
+    dplyr::filter(n() > 1) |>
     dplyr::mutate(fusion_id = dplyr::cur_group_id())
-  
+
   if (nrow(fusion_events) > 1) {
-    
     # For each fusion event, we just want to retain one historical ID
-    logger.info("  |- Handling potential fusing events: multiple previous clusters match a single new cluster.")
-    
-    temp_tbl <- match_tbl |> 
-      dplyr::group_by(new_cluster) |> 
+    logger.info(
+      "  |- Handling potential fusing events: multiple previous clusters match a single new cluster."
+    )
+
+    temp_tbl <- match_tbl |>
+      dplyr::group_by(new_cluster) |>
       dplyr::group_map(
         .keep = TRUE,
         function(x, y) {
           if (any(x$new_cluster %in% fusion_events$new_cluster)) {
-            if(all(x$`Match Type` == "Full")){
+            if (all(x$`Match Type` == "Full")) {
               #browser()
               # Case 1: 2 old [Full Match] -> 1 new
               # Solution: drop the row of 2nd old cluster => obs will take the cluster ID
               # of 1st old cluster (i.e. get TRANSFERRED)
-              x <- dplyr::slice(x, 1)   
-            } else if(identical(x$`Match Type`, c("Partial", "Full")) || identical(x$`Match Type`, c("Full", "Partial"))) {
+              x <- dplyr::slice(x, 1)
+            } else if (
+              identical(x$`Match Type`, c("Partial", "Full")) ||
+                identical(x$`Match Type`, c("Full", "Partial"))
+            ) {
               # Case 2: 2 old [1 Full & 1 Partial] -> 1 new
               # Solution: drop row with "Full Match", which will force those obs
               # to take the cluster UUID of the Partial match (i.e. TRANSFERRED)
               #browser()
               x <- dplyr::filter(x, `Match Type` == "Full")
-              
-            } else if (identical(x$`Match Type`, c("Partial", "Partial"))){
+            } else if (identical(x$`Match Type`, c("Partial", "Partial"))) {
               # Case 3: 2 old [2 Partials] -> 1 new
               # Found case was not actually a fusion event, but a double exact
               # match between two pairs of clusters. That appeared to be caused
               # by a glitch in the clustering App, as it should all be one single
-              # cluster without changes between consecutive runs. 
+              # cluster without changes between consecutive runs.
               # Solution: For the moment, we'll just keep the old cluster UUIDs,
               # but this might need re-assessment
               x <- dplyr::filter(x, master_cluster == cluster_uuid)
-              
-              if(nrow(x) == 2){
+
+              if (nrow(x) == 2) {
                 # Case 3b: 2 old [2 Partials] -> 1 new, but previous solution
                 # didn't drop cluster. Actual fusion event, where only part of an
-                # old cluster fuses with another cluster. 
+                # old cluster fuses with another cluster.
                 # Solution: keep the old cluster, allowing the be transferred to
                 # the new cluster
-                clust_to_keep <- match_tbl |> 
-                  dplyr::filter(master_cluster %in% x$master_cluster) |> 
-                  dplyr::group_by(master_cluster) |> 
-                  dplyr::summarise(n = n()) |> 
+                clust_to_keep <- match_tbl |>
+                  dplyr::filter(master_cluster %in% x$master_cluster) |>
+                  dplyr::group_by(master_cluster) |>
+                  dplyr::summarise(n = n()) |>
                   # tease out old cluster that shows up in multiple matches
-                  dplyr::filter(n > 1) |> 
+                  dplyr::filter(n > 1) |>
                   dplyr::pull(master_cluster)
-                
-                if(length(clust_to_keep) > 1){
+
+                if (length(clust_to_keep) > 1) {
                   # More than one cluster at this point suggests 2 old clusters
                   # reshuffle into 2 new clusters, i.e. parts of 2 old cluster
                   # fuse into one new cluster (like a reshaping of 2 clusters).
                   clust_to_keep <- clust_to_keep[1]
                 }
-                
+
                 x <- dplyr::filter(x, master_cluster == clust_to_keep)
               }
             } else {
               #browser()
               x <- dplyr::filter(x, master_cluster == cluster_uuid)
-              if(nrow(x) > 1) x <- dplyr::filter(x, n_pnts == max(n_pnts))
-              if(nrow(x) > 1) x <- dplyr::slice(x, 1)
+              if (nrow(x) > 1) {
+                x <- dplyr::filter(x, n_pnts == max(n_pnts))
+              }
+              if (nrow(x) > 1) x <- dplyr::slice(x, 1)
             }
           }
           return(x)
-        }) |> 
+        }
+      ) |>
       dplyr::bind_rows()
-    
+
     # logger.info(sprintf(
     #   "  |- Resolved %d fusion events, retaining only one old cluster per new cluster.",
     #   dplyr::n_groups(fusion_events)
     # ))
-    
   } else {
     temp_tbl <- match_tbl
   }
-  
+
   # store ID of fused clusters (i.e. those disappearing)
-  fused_cluster_uuids <- setdiff(fusion_events$master_cluster, temp_tbl$master_cluster)
-  
+  fused_cluster_uuids <- setdiff(
+    fusion_events$master_cluster,
+    temp_tbl$master_cluster
+  )
+
   # Ensure that there are no duplicate new clusters - if so, throw an error
   if (any(duplicated(temp_tbl$new_cluster))) {
     cli::cli_abort(c(
@@ -2102,27 +2327,33 @@ merge_and_update <- function(matched_dt,
       x = "This is unexpected and indicates a problem with the matching process."
     ))
   }
-  
+
   ## Join match_tbl to merged data
   ## NOTE: "new_cluster" contains all the current clusters, old and new
-  merged_dt <- left_join(merged_dt, temp_tbl, by = c("XTEMPCLUSTERCOL" = "new_cluster"))
-  
+  merged_dt <- left_join(
+    merged_dt,
+    temp_tbl,
+    by = c("XTEMPCLUSTERCOL" = "new_cluster")
+  )
+
   # Classify obs cluster-merging status ----------------------------------------
   ## Combine information on historic and new UUIDs to work out observation-level
-  ## changes in cluster membership. 
+  ## changes in cluster membership.
   ## NOTE: cluster annotation in historical data is retained in `cluster_uuid_hist`
-  merged_dt <- merged_dt |> 
+  merged_dt <- merged_dt |>
     dplyr::mutate(
       cluster_merge_status = dplyr::case_when(
         # obs remained in same cluster
-        !is.na(cluster_uuid_hist) & (cluster_uuid_hist == cluster_uuid) ~ "RETAINED",
+        !is.na(cluster_uuid_hist) &
+          (cluster_uuid_hist == cluster_uuid) ~ "RETAINED",
         # obs changed cluster membership
-        !is.na(cluster_uuid_hist) & (cluster_uuid_hist != cluster_uuid) ~ "TRANSFERRED",
+        !is.na(cluster_uuid_hist) &
+          (cluster_uuid_hist != cluster_uuid) ~ "TRANSFERRED",
         # obs dropped from a cluster
         !is.na(cluster_uuid_hist) & is.na(cluster_uuid) ~ "DROPPED",
         # old obs remained non-clustered + memberless new obs
         is.na(cluster_uuid_hist) & is.na(cluster_uuid) ~ "NONCLUSTERED",
-        # non-clustered old obs becomes affiliated to a cluster 
+        # non-clustered old obs becomes affiliated to a cluster
         !NEWOBS & is.na(cluster_uuid_hist) & !is.na(cluster_uuid) ~ "RECRUITED",
         NEWOBS & !is.na(cluster_uuid) ~ "ENTRANT"
         #is.na(cluster_uuid_hist) & !is.na(cluster_uuid) ~ "ENTRANT"
@@ -2130,79 +2361,90 @@ merge_and_update <- function(matched_dt,
     )
 
   # Run Checks and log summaries  ------------------------------------------
-  
+
   # clusters in merged data
-  clusters_merge <- merged_dt |> 
-    data.frame() |> 
-    count(cluster_uuid) |> 
+  clusters_merge <- merged_dt |>
+    data.frame() |>
+    count(cluster_uuid) |>
     dplyr::filter(!is.na(cluster_uuid))
-  
+
   ## clusters in historical data
   clusters_hist <- matched_hist_dt |>
     data.frame() |>
-    count(cluster_uuid) |> 
+    count(cluster_uuid) |>
     dplyr::filter(!is.na(cluster_uuid))
-  
-  
+
   ## Check for cluster collapse events
   #
   # A small old cluster may not get a match with new clusters using the current
   # centroid-based matching approach used in `match_sf_clusters()`. E.g., in a
   # 3-point old cluster, 2 points get a match on a new cluster (i.e. get
   # TRANSFERRED), while the remaining point is considered non-clustered in the newest data
-  dropped_hist_clust <- clusters_hist |> 
+  dropped_hist_clust <- clusters_hist |>
     dplyr::filter(
       # find clusters dropped between hist and merge
       cluster_uuid %notin% clusters_merge$cluster_uuid,
       # discount fused cases
       cluster_uuid %notin% fused_cluster_uuids
-    ) |> 
+    ) |>
     dplyr::pull(cluster_uuid)
-  
+
   collapsed_cluster_uuids <- character(0)
-  
-  if(length(dropped_hist_clust) > 0){
-    
-    collapsed_events <- merged_dt |> 
-      as.data.frame() |> 
-      dplyr::filter(cluster_uuid_hist %in% dropped_hist_clust) |> 
-      dplyr::group_by(cluster_uuid_hist) |> 
-      dplyr::summarise(collapsed = all(cluster_merge_status %in% c("DROPPED", "TRANSFERRED")))
-    
-    if(!all(collapsed_events$collapsed)){
+
+  if (length(dropped_hist_clust) > 0) {
+    collapsed_events <- merged_dt |>
+      as.data.frame() |>
+      dplyr::filter(cluster_uuid_hist %in% dropped_hist_clust) |>
+      dplyr::group_by(cluster_uuid_hist) |>
+      dplyr::summarise(
+        collapsed = all(cluster_merge_status %in% c("DROPPED", "TRANSFERRED"))
+      )
+
+    if (!all(collapsed_events$collapsed)) {
       cli::cli_abort(c(
         "Historic clusters dropped from merged data for unexpected reasons.",
         i = "Historical data may have been inadvertently deleted during processing."
       ))
     }
-    
+
     collapsed_cluster_uuids <- collapsed_events$cluster_uuid_hist
-    logger.info("  |- Handling collapsed events: cluster points fully absorbed into neighbouring clusters.")
+    logger.info(
+      "  |- Handling collapsed events: cluster points fully absorbed into neighbouring clusters."
+    )
   }
-  
+
   ## Count dropped clusters (fused and collapsed)
   n_dissolved <- length(fused_cluster_uuids) + length(collapsed_cluster_uuids)
-  
+
   # Count added clusters
-  n_added <- length(setdiff(clusters_merge$cluster_uuid, clusters_hist$cluster_uuid))
-  
-  hist_vs_merge_size <- nrow(clusters_merge) - nrow(clusters_hist)
-  
+  n_added <- length(setdiff(
+    clusters_merge$cluster_uuid,
+    clusters_hist$cluster_uuid
+  ))
+
+  merge_hist_diffsize <- nrow(clusters_merge) - nrow(clusters_hist)
+
   ## Check clusters differential
-  if(hist_vs_merge_size != (n_added - n_dissolved)){
+  if (merge_hist_diffsize != (n_added - n_dissolved)) {
     cli::cli_abort(c(
       "Unexpectedly low number of clusters in merged data.",
       i = "This suggests clusters in historical data may have been inadvertently dropped during processing."
     ))
   }
-  
-  ## check obs merge status 
-  if(any(is.na(merged_dt$cluster_merge_status))){
-    logger.warn("NAs found in observations' merge status; they may not match classification logic.")
+
+  ## check obs merge status
+  if (any(is.na(merged_dt$cluster_merge_status))) {
+    logger.warn(
+      "NAs found in observations' merge status; they may not match classification logic."
+    )
   }
-  
+
   ## merge summary
-  merge_summ <- dplyr::full_join(clusters_hist, clusters_merge, by = "cluster_uuid") |> 
+  merge_summ <- dplyr::full_join(
+    clusters_hist,
+    clusters_merge,
+    by = "cluster_uuid"
+  ) |>
     dplyr::mutate(
       diff = n.y - n.x,
       expanded = diff > 0,
@@ -2210,121 +2452,147 @@ merge_and_update <- function(matched_dt,
       unchanged = diff == 0,
       new = is.na(n.x)
     )
-  
+
   logger.info(sprintf(
     "  |- Cluster-level merging summary:
            * Historical Clusters: Expanded: %d | Shrunk: %d | Unchanged: %d | Fused: %d | Collapsed: %d
            * New Clusters: %d",
-    sum(merge_summ$expanded, na.rm = TRUE), 
+    sum(merge_summ$expanded, na.rm = TRUE),
     sum(merge_summ$shrunk, na.rm = TRUE),
     sum(merge_summ$unchanged, na.rm = TRUE),
     length(fused_cluster_uuids),
     length(collapsed_cluster_uuids),
     sum(merge_summ$new)
-  )) 
-  
-  
+  ))
+
   ## Closing clusters: check and summary
-  just_closed <- merged_dt$cluster_status == "CLOSED" & merged_dt$CLUSTERSTATUSCHANGED == TRUE
-  
-  if(any(just_closed, na.rm = TRUE)){
+  just_closed <- merged_dt$cluster_status == "CLOSED" &
+    merged_dt$CLUSTERSTATUSCHANGED == TRUE
+
+  if (any(just_closed, na.rm = TRUE)) {
     # first summarization, for checking
     closed_summ <- merged_dt |>
       # summarise only for clusters closing in current run
-      dplyr::filter(just_closed) |> 
-      dplyr::group_by(cluster_uuid) |> 
+      dplyr::filter(just_closed) |>
+      dplyr::group_by(cluster_uuid) |>
       dplyr::summarise(
         n_pts = dplyr::n(),
-        span = difftime(max(.data[[timestamp_col]]), min(.data[[timestamp_col]]), units = "days")
-      ) |> 
+        span = difftime(
+          max(.data[[timestamp_col]]),
+          min(.data[[timestamp_col]]),
+          units = "days"
+        )
+      ) |>
       dplyr::mutate(
-        n_pts_bin = cut(n_pts, c(0, 10, 25, 50, 100, 250, 500, 1000, 1250, 1500, 2000, Inf)),
+        n_pts_bin = cut(
+          n_pts,
+          c(0, 10, 25, 50, 100, 250, 500, 1000, 1250, 1500, 2000, Inf)
+        ),
         area = sf::st_convex_hull(geometry) |> sf::st_area()
-      ) 
-    
-    purrr::walk(closed_summ$cluster_uuid, function(x){
+      )
+
+    purrr::walk(closed_summ$cluster_uuid, function(x) {
       cluster_dt <- filter(merged_dt, cluster_uuid == x)
-      if(any(cluster_dt$cluster_status != "CLOSED")){
+      if (any(cluster_dt$cluster_status != "CLOSED")) {
         cli::cli_abort(c(
           "Some observations in cluster {.val {x}} are not correctly annotated as {.val CLOSED}.",
           x = "Cluster {.val {x}} is now {.val CLOSED}; all its members must be updated accordingly."
         ))
       }
     })
-    
+
     # further summarise by cluster size, for logging
-    closed_summ <- closed_summ |> 
-      dplyr::as_tibble() |> 
+    closed_summ <- closed_summ |>
+      dplyr::as_tibble() |>
       dplyr::group_by(n_pts_bin) |>
       dplyr::summarise(
         n_clusters = dplyr::n(),
         span_min = as.numeric(min(span)) |> units::set_units("day"),
-        span_med =  as.numeric(median(span)) |> units::set_units("day"),
+        span_med = as.numeric(median(span)) |> units::set_units("day"),
         span_max = as.numeric(max(span)) |> units::set_units("day"),
-        area_min = min(area), area_med = median(area), area_max = max(area)
-      ) |> 
+        area_min = min(area),
+        area_med = median(area),
+        area_max = max(area)
+      ) |>
       rename(n_pts = n_pts_bin)
-    
-    
+
     logger.info(
       paste0(
         #"  |- ", sum(closed_summ$n_clusters), " 'CLOSED' clusters. Summary by nr. points:\n\n",
-        "  |- Closing ", sum(closed_summ$n_clusters), " clusters. Summary by nr of points:\n\n",
+        "  |- Closing ",
+        sum(closed_summ$n_clusters),
+        " clusters. Summary by nr of points:\n\n",
         paste0(capture.output(print(closed_summ, n = Inf)), collapse = "\n"),
         "\n"
-      ))
-    
+      )
+    )
   }
-  
+
   # Annotate patching and posting ----------------------------------------
-  # We now want to annotate data into PATCH and POST data for API processing. 
+  # We now want to annotate data into PATCH and POST data for API processing.
   # - All new oobservations will POSTable.
-  # - PATCHable obs will be those that have changed their cluster membership status 
+  # - PATCHable obs will be those that have changed their cluster membership status
   #   since previous run or whose `store_cols` have changed
-  merged_dt <- merged_dt |> 
+  merged_dt <- merged_dt |>
     dplyr::mutate(
       request_type = dplyr::case_when(
         NEWOBS ~ "POST",
         #is.na(er_obs_id) ~ "POST",
-        cluster_merge_status %in% c("RECRUITED", "TRANSFERRED", "DROPPED") ~ "PATCH",
+        cluster_merge_status %in%
+          c("RECRUITED", "TRANSFERRED", "DROPPED") ~ "PATCH",
         (!NEWOBS & STORECOLSMODIFIED) | CLUSTERSTATUSCHANGED ~ "PATCH",
         .default = NA_character_
       )
     )
-  
-  logger.info(glue::glue_collapse(c(
-    "  |- Observation-level cluster membership status:", 
-    glue::glue("           * {names(x)}: {x}", x = table(merged_dt$cluster_merge_status))), 
+
+  logger.info(glue::glue_collapse(
+    c(
+      "  |- Observation-level cluster membership status:",
+      glue::glue(
+        "           * {names(x)}: {x}",
+        x = table(merged_dt$cluster_merge_status)
+      )
+    ),
     sep = "\n"
   ))
-  
+
   logger.info(sprintf(
     "  |- Observation-level API request status: 
            * PATCHable: %d
            * POSTable: %d 
            * Unchanged: %d",
-    sum(merged_dt$request_type == "PATCH", na.rm = TRUE), 
+    sum(merged_dt$request_type == "PATCH", na.rm = TRUE),
     sum(merged_dt$request_type == "POST", na.rm = TRUE),
     sum(is.na(merged_dt$request_type))
   ))
-  
+
   # Store UUIDs of hollowed clusters in fusion and or collapse events  ------------------------
   # IDs stored as an attribute of the output data, for later reference
-  attr(merged_dt, "dispersed_cluster_uuid") <- c(fused_cluster_uuids, collapsed_cluster_uuids)
-  
-  
-  
+  attr(merged_dt, "dispersed_cluster_uuid") <- c(
+    fused_cluster_uuids,
+    collapsed_cluster_uuids
+  )
+
   # Tidy-up and output ----------------------------------------
-  merged_dt <- merged_dt |> 
-    dplyr::select(-any_of(c(
-      "MAXTIMESTAMP", "XTEMPCOUNT", "XTEMPUNIQUEID", "XTEMPCLUSTERCOL", 
-      "XTEMPTIMECOL", "XTEMPIDCOL", "STORECOLSMODIFIED", "CLUSTERORIGIN", 
-      "NEWOBS", "CLUSTERSTATUSCHANGED"
-    )))
-  
+  merged_dt <- merged_dt |>
+    dplyr::select(
+      -any_of(c(
+        "MAXTIMESTAMP",
+        "XTEMPCOUNT",
+        "XTEMPUNIQUEID",
+        "XTEMPCLUSTERCOL",
+        "XTEMPTIMECOL",
+        "XTEMPIDCOL",
+        "STORECOLSMODIFIED",
+        "CLUSTERORIGIN",
+        "NEWOBS",
+        "CLUSTERSTATUSCHANGED"
+      ))
+    )
+
   merged_dt
 }
- 
+
 
 # ////////////////////////////////////////////////////////////////////////////////
 #' Fetch and stack non-clustered observations from subjects involved in the
@@ -2579,81 +2847,93 @@ coerce_col_types <- function(data, ref_data) {
 }
 
 
-
 # ////////////////////////////////////////////////////////////////////////////////
 #' helper to fetch subject_id and subject_name of all the subjects present in
 #' ER's Observations table
-get_subject_ids <- function(api_base_url, token){
-  
+get_subject_ids <- function(api_base_url, token) {
   subjects_api_endpnt <- file.path(api_base_url, "subjects")
-  
+
   req_subj <- httr2::request(subjects_api_endpnt) |>
     httr2::req_auth_bearer_token(token) |>
     # force pagination, to allow for iterative requests below
-    httr2::req_url_query(page_size = 500) |> 
+    httr2::req_url_query(page_size = 500) |>
     httr2::req_headers("accept" = "application/json")
-  
+
   res_subj <- req_subj |>
     httr2::req_perform_iterative(
-      next_req = er_next_req,  
+      next_req = er_next_req,
       max_reqs = Inf
-    ) |> 
+    ) |>
     purrr::map(
-      .f = function(resp){
-        resp |> 
+      .f = function(resp) {
+        resp |>
           httr2::resp_body_json() |>
           purrr::pluck("data") |>
           purrr::pluck("results")
-      }) |>
+      }
+    ) |>
     purrr::list_c()
-  
-  purrr::map(res_subj, ~ data.frame(er_subject_name = .x$name, er_subject_id = .x$id)) |>
+
+  purrr::map(
+    res_subj,
+    ~ data.frame(
+      er_subject_name = .x$name,
+      er_subject_id = .x$id,
+      er_is_active = .x$is_active
+    )
+  ) |>
     purrr::list_rbind()
 }
 
 
 # /////////////////////////////////////////////////////////////////////////////
 # Helper to use in req_perform_iterative() to handle ER pagination in GET requests
-er_next_req <- function(resp, req){
+er_next_req <- function(resp, req) {
   next_url <- resp_body_json(resp)$data[["next"]]
-  if (is.null(next_url))
+  if (is.null(next_url)) {
     return(NULL)
+  }
   req |> req_url(next_url)
-}  
-
+}
 
 
 # /////////////////////////////////////////////////////////////////////////////
 # Other short utility helpers
 
 #' check if vector is parseable into date-time (POSIXt)
-is_dttm_parseable <- function(x) any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
+is_dttm_parseable <- function(x) {
+  any(!is.na(lubridate::ymd_hms(x, quiet = TRUE)))
+}
 
 
 # wrapper to lubridate's `format_ISO8601()` to insert colon in TZ's time
 # component (i.e. +HH:MM), which seems to be a requirement when POSTing from
 # MoveApps to ER...
-format_iso8601 <- function(x, tz_colon = TRUE){
-  
-  if(!is.POSIXt(x)) cli::cli_abort("x must be a {.cls POSIXt} object, not {.cls {class(x)}}")
-  
+format_iso8601 <- function(x, tz_colon = TRUE) {
+  if (!is.POSIXt(x)) {
+    cli::cli_abort("x must be a {.cls POSIXt} object, not {.cls {class(x)}}")
+  }
+
   out <- lubridate::format_ISO8601(x, usetz = TRUE)
-  
-  if(tz_colon) out <- sub('([+-][0-9]{2})([0-9]{2}$)','\\1:\\2', out, fixed = FALSE)
+
+  if (tz_colon) {
+    out <- sub('([+-][0-9]{2})([0-9]{2}$)', '\\1:\\2', out, fixed = FALSE)
+  }
   out
 }
 
 
-
 # wee wrapper to make UUID issuing tidier in main function
-generate_uuid <- function(n = 1){
+generate_uuid <- function(n = 1) {
   paste(
     ids::adjective_animal(n = n, n_adjectives = 3, style = "camel"),
-    format(Sys.time(), "%Y%m%d-%H%M%S"), 
-    #sample(1:1e4, n),
-    sep = "-")
+    format(Sys.time(), "%Y%m%d-%H%M%S"),
+    #as.numeric(difftime(Sys.time(), as.POSIXct("2020-01-01"), units = "secs") * 1000000),
+    #gsub("\\.", "-", format(Sys.time(), "%Y%m%d-%H%M%OS6")),
+    #sample(1000:9999, n), # ((8946^2)*1748*9000)/1e12 = 1260 trillion combinations
+    sep = "-"
+  )
 }
-
 
 
 # Predicate: assess whether a numeric vector/column is masked as a character vector.
@@ -2662,53 +2942,56 @@ generate_uuid <- function(n = 1){
 # - there is at least one non-NA, non-empty element, and
 # - every non-NA, all non-empty elements are coercible to numeric (i.e. no NAs produced)
 is_masked <- function(x, what = c("bool", "num")) {
-  
   what <- rlang::arg_match(what)
-  
-  if (!is.character(x)) return(FALSE)
-  if (length(x) == 0) return(FALSE)
-  
+
+  if (!is.character(x)) {
+    return(FALSE)
+  }
+  if (length(x) == 0) {
+    return(FALSE)
+  }
+
   # Trim surrounding whitespace so " TRUE " or " 34 " matches
   x_trim <- trimws(x)
-  
+
   # Non-missing and non-empty entries
   idx <- !is.na(x_trim) & nzchar(x_trim)
-  
+
   # If all elements are NA or empty -> not masked
-  if (!any(idx)) return(FALSE)
-  
-  if(what == "bool"){
-    
+  if (!any(idx)) {
+    return(FALSE)
+  }
+
+  if (what == "bool") {
     # Check that every non-NA/non-empty element is exactly "true" or "false" (case-insensitive)
     vals <- tolower(x_trim[idx])
-    out <- all(vals %in% c("true", "false"))  
-    
-  } else if(what == "num") {
-    
+    out <- all(vals %in% c("true", "false"))
+  } else if (what == "num") {
     # check if every element is coercible to numeric
     out <- all(suppressWarnings(!is.na(as.numeric(x_trim[idx]))))
-    
   }
-  
+
   out
 }
 
 
-# Convert "NA" or "<NA>" strings to NA_character_ in a character vector 
-convert_na_string <- function(x) {  
-  if(!is.character(x)) return(x)
-  na_strings <- c("NA", "<NA>")  
-  replace(x, x %in% na_strings, NA_character_)  
+# Convert "NA" or "<NA>" strings to NA_character_ in a character vector
+convert_na_string <- function(x) {
+  if (!is.character(x)) {
+    return(x)
+  }
+  na_strings <- c("NA", "<NA>")
+  replace(x, x %in% na_strings, NA_character_)
 }
 
 
-
 # Sanitise observations data fetched from ER into amenable format
-clean_obs <- function(obs_dt){
-  
-  if(nrow(obs_dt) == 0) return(obs_dt)
-  
-  obs_dt |> 
+clean_obs <- function(obs_dt) {
+  if (nrow(obs_dt) == 0) {
+    return(obs_dt)
+  }
+
+  obs_dt |>
     dplyr::mutate(
       # replace "NA" strings as formal NAs
       dplyr::across(dplyr::where(is.character), convert_na_string),
@@ -2717,32 +3000,31 @@ clean_obs <- function(obs_dt){
       # handle character-masked numeric columns
       dplyr::across(dplyr::where(~ is_masked(.x, what = "num")), as.numeric),
       # convert empty string columns to NA columns
-      dplyr::across(dplyr::where(~ all(!nzchar(.x, keepNA = TRUE), na.rm = TRUE)), \(x) NA),
+      dplyr::across(
+        dplyr::where(~ all(!nzchar(.x, keepNA = TRUE), na.rm = TRUE)),
+        \(x) NA
+      ),
       # if present, force column `track_id` to be of type character (from error in NCZ instance)
       dplyr::across(dplyr::any_of("track_id"), as.character)
     )
 }
 
 
-
-
-
 # Bind (or overwrite) columns for latitude and longitude coords to move2/sf
 # dataset. Original CRS projection remains unchanged
-bind_latlon <- function(data){
-  
+bind_latlon <- function(data) {
   stopifnot(inherits(data, "sf"))
-  
-  if(sf::st_is_longlat(data)){
+
+  if (sf::st_is_longlat(data)) {
     lon_lat <- sf::st_coordinates(data)
   } else {
     lon_lat <- data |>
       sf::st_transform(4326) |>
       sf::st_coordinates()
   }
-  
+
   data$lon <- lon_lat[, 'X']
   data$lat <- lon_lat[, 'Y']
-  
+
   data
 }
