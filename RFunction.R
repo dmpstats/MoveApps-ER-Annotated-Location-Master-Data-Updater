@@ -2329,160 +2329,197 @@ merge_and_update <- function(matched_dt,
 # ////////////////////////////////////////////////////////////////////////////////
 #' Fetch and stack non-clustered observations from subjects involved in the
 #' clusters, within each cluster's time window.
-#' 
+#'
 #' This is to ensure track/movement data is provided in its entirety to downstream
 #' Apps (e.g. the Metrics Apps)
-#'  
+#'
 #' **IMPORTANT**: This function MUST be run **AFTER** the latest merged data is pushed to
 #' ER, so that Observations data is up-to-date on ER.
-#' 
+#'
 #' NB: this task could also be performed based on tag IDs, instead of subject
 #' name. Could that be potentially safer? Something to keep in mind...
-#' @param clustered_dt a `<sf>` object containing *only* clustered observations 
-#' 
-fill_track_gaps <- function(clustered_dt,
-                            tm_id_col,
-                            api_base_url, 
-                            token,
-                            provider_key = "moveapps_ann_locs"){
-  
+#' @param clustered_dt a `<sf>` object containing *only* clustered observations
+#'
+fill_track_gaps <- function(
+  clustered_dt,
+  tm_id_col,
+  api_base_url,
+  token,
+  provider_key = "moveapps_ann_locs"
+) {
   # Input validation -------------------
-  req_cols <- c("request_type", "cluster_uuid", "track_id", "individual_local_identifier")
+  req_cols <- c(
+    "request_type",
+    "cluster_uuid",
+    "track_id",
+    "individual_local_identifier"
+  )
   miss_cols <- req_cols[req_cols %notin% names(clustered_dt)]
   if (length(miss_cols) > 0) {
-    cli::cli_abort("{.arg clustered_dt} is missing the following required columns: {.val {miss_cols}}.")
+    cli::cli_abort(
+      "{.arg clustered_dt} is missing the following required columns: {.val {miss_cols}}."
+    )
   }
-  
-  if(sum(is.na(clustered_dt$cluster_uuid)) > 0){
-    cli::cli_abort(c(
-      "{.arg clustered_dt} must only contain clustered data."),
+
+  if (sum(is.na(clustered_dt$cluster_uuid)) > 0) {
+    cli::cli_abort(
+      c(
+        "{.arg clustered_dt} must only contain clustered data."
+      ),
       x = "Found `NAs` in column {.val cluster_uuid}"
     )
   }
-  
+
   # Fetch obs for subjects visiting clusters -------------
   logger.info("  |- Filling gaps in tracks within the merged dataset.")
-  
+
   ## Prepare query parameters for GET obs request. For each subject involved in
   ## any cluster, get the min and max dates across all visited clusters
-  query_subjects <- clustered_dt |> 
-    group_by(cluster_uuid) |> 
+  query_subjects <- clustered_dt |>
+    group_by(cluster_uuid) |>
     # get start and end dates of each cluster + visited subjects
     reframe(
       cluster_start = min(.data[[tm_id_col]]),
       cluster_end = max(.data[[tm_id_col]]),
       er_subject_name = unique(individual_local_identifier)
-    ) |> 
+    ) |>
     # for each subject, derive time window spanning over visited clusters +- 1
     # day to ensure leading and trailing track points are included
-    group_by(er_subject_name) |> 
+    group_by(er_subject_name) |>
     reframe(
       query_from = min(cluster_start, na.rm = TRUE) - lubridate::days(1),
       query_to = max(cluster_end, na.rm = TRUE) + lubridate::days(1)
     )
-  
+
   ## Get and bind subject IDs, required for querying obs via GET
+  ## This returns ALL subjects in the instance
   subject_ids <- get_subject_ids(api_base_url, token)
-  query_subjects <- dplyr::left_join(query_subjects, subject_ids, by = "er_subject_name")
-  
+
+  ## link query subjects to their subject_id via subject_name.
+  #IMPORTANT: there may be multiple streams in ER with the same subjects under
+  #the same name, which will result in duplicates (ie. one-to-many
+  #subject_name -> subject_id)
+  query_subjects <- dplyr::left_join(
+    query_subjects,
+    subject_ids,
+    by = "er_subject_name"
+  )
+
+  # # get provider UUID from its key
+  # provider_id <- get_provider_id(provider_key, api_base_url, token)
+
   ## Perform Obs GET request, iteratively over subjects
   obs_nonexcl <- purrr::pmap(
     query_subjects,
-    function(query_from, query_to, er_subject_id, er_subject_name){
+    function(query_from, query_to, er_subject_id, er_subject_name, ...) {
       #browser()
       sbj_obs <- get_obs(
-        api_base_url = api_base_url, 
-        token = token, 
-        min_date = query_from, 
-        max_date = query_to, 
-        filter = 0, 
-        page_size = 500,
-        subject_id = er_subject_id
+        api_base_url = api_base_url,
+        token = token,
+        min_date = query_from,
+        max_date = query_to,
+        filter = 0,
+        page_size = 1000,
+        subject_id = er_subject_id #,
+        #sourceprovider_id = provider_id
       )
-      
-      if(nrow(sbj_obs) == 0) return(NULL) 
-      
+
+      if (nrow(sbj_obs) == 0) {
+        return(NULL)
+      }
+
+      ## Ensure only observations from `provider_key` are retained for
+      ## subsequent processing, e.g. to avoid field-types clashes between #
+      ## observations from different providers
+
+      ### Source details associated with each observation entry
+      source_dets <- purrr::map(unique(sbj_obs$source), function(s) {
+        get_source_details(s, api_base_url, token) |>
+          purrr::compact() |>
+          dplyr::as_tibble()
+      }) |>
+        purrr::list_rbind() |>
+        dplyr::select(id, manufacturer_id, provider) |>
+        dplyr::rename(source = id)
+
+      ### Bind source details and keep observations for intended source provider
+      sbj_obs <- left_join(sbj_obs, source_dets, by = "source") |>
+        filter(provider == provider_key)
+
+      ### escape if there are no observations from `provider_key`
+      if (nrow(sbj_obs) == 0) {
+        return(NULL)
+      }
+
       # next filter handles change in ER, where API's "filter = 0" ignores our
       # "ACTIVE" exclusion flag (i.e. they're also retrieved). Code below
       # explicitly keeps only non-clustered obs, so this is for extra safety
-      sbj_obs |> 
+      sbj_obs |>
         dplyr::filter(exclusion_flags == 0) |>
         dplyr::mutate(
-          er_subject_name = er_subject_name, 
+          er_subject_name = er_subject_name,
           er_subject_id = er_subject_id
         )
-    }, 
+    },
     .progress = TRUE
-  ) |> 
+  ) |>
     purrr::list_rbind()
-  
-  
+
   # Handle retrieved data  ----------------------------------------------------
   # Retrieved data will have observations not tagged with exclusion flag used
   # for marking membership to "ACTIVE" clusters, so both  non-clustered and
-  # those members to "CLOSED" clusters. 
-  # *In addition*, the GET query is oblivious to the obs source provider, so to
-  # avoid duplicates from subjects included in more than one source provider,
-  # it's kosher keep obs under specified `provider_key`.
+  # those members to "CLOSED" clusters.
   # So, the next steps broadly involve:
-  #  - filter non-clustered obs observations 
-  #  - get and bind source details for obs in retrieved dataset
-  #  - drop all obs not submitted via the `provider_key`
+  #  - filter non-clustered obs observations
   #  - prepare data to stack up with clustered obs data
-  if(nrow(obs_nonexcl) > 0 && "cluster_uuid" %in% names(obs_nonexcl)){
-    
+  if (nrow(obs_nonexcl) > 0 && "cluster_uuid" %in% names(obs_nonexcl)) {
     ## Keep only un-clustered observations (i.e. with no cluster UUID annotated)
     obs_nonclust <- dplyr::filter(obs_nonexcl, is.na(cluster_uuid))
-    
-    if(nrow(obs_nonclust) > 0){
-      ## Source details associated with each observation entry
-      source_dets <- map(unique(obs_nonclust$source), function(s){
-        get_source_details(s, api_base_url, token) |> 
-          purrr::compact() |> 
-          dplyr::as_tibble()
-      }) |> 
-        purrr::list_rbind() |> 
-        dplyr::select(id, manufacturer_id, provider) |> 
-        dplyr::rename(source = id)
-      
-      ## Bind source details and keep observations for intended source provider
-      obs_nonclust <- left_join(obs_nonclust, source_dets, by = "source") |> 
-        filter(provider == provider_key)
-      
+
+    if (nrow(obs_nonclust) > 0) {
       ## Prepare for stacking
-      obs_nonclust <- obs_nonclust |> 
+      obs_nonclust <- obs_nonclust |>
         dplyr::rename(
-          er_source_id = source, 
+          er_source_id = source,
           er_obs_id = id,
           er_manufacturer_id = manufacturer_id
-        ) |> 
+        ) |>
         dplyr::mutate(
-          {{tm_id_col}} := lubridate::as_datetime(recorded_at, tz = "UTC"), 
-        ) |> 
+          {{ tm_id_col }} := lubridate::as_datetime(recorded_at, tz = "UTC"),
+        ) |>
         # drop non-relevant  columns
-        dplyr::select(-c(exclusion_flags, created_at, recorded_at)) |> 
+        dplyr::select(-c(exclusion_flags, created_at, recorded_at)) |>
         # cast as sf and re-project to same CRS as clustered data
-        sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |> 
+        sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |>
         sf::st_transform(sf::st_crs(clustered_dt))
-      
+
       # homogenise column class/types
       obs_nonclust <- coerce_col_types(obs_nonclust, clustered_dt)
-    } 
-  } else{
+    }
+  } else {
     obs_nonclust <- data.frame()
   }
-   
+
   # Stack up and output  ----------------------------------
-  
-  if(nrow(obs_nonclust) > 0){
+
+  if (nrow(obs_nonclust) > 0) {
     dplyr::bind_rows(clustered_dt, obs_nonclust) |>
-      dplyr::arrange(individual_local_identifier, tag_id, deployment_id, .data[[tm_id_col]]) |>
-      dplyr::distinct(individual_local_identifier, tag_id, deployment_id, .data[[tm_id_col]], .keep_all = TRUE)
-    
+      dplyr::arrange(
+        individual_local_identifier,
+        tag_id,
+        deployment_id,
+        .data[[tm_id_col]]
+      ) |>
+      dplyr::distinct(
+        individual_local_identifier,
+        tag_id,
+        deployment_id,
+        .data[[tm_id_col]],
+        .keep_all = TRUE
+      )
   } else {
     clustered_dt
   }
-
 }
 
 
