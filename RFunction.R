@@ -2523,54 +2523,58 @@ fill_track_gaps <- function(
 }
 
 
-
 # ////////////////////////////////////////////////////////////////////////////////
 #' helper to coerce common columns between two datasets to have the same
 #' class/type, to allow for subsequent stacking up
-coerce_col_types <- function(data, ref_data){
-  
+coerce_col_types <- function(data, ref_data) {
   mutual_cols <- intersect(names(data), names(ref_data))
-  
-  mutual_cols_prof <- purrr::map(mutual_cols, function(col){
+
+  mutual_cols_prof <- purrr::map(mutual_cols, function(col) {
     ref_vct <- ref_data[[col]]
     trg_vct <- data[[col]]
     data.frame(
       col_name = col,
       ref_cls = class(ref_vct)[[1]], # top-level class in reference dataset
-      ref_units = ifelse(inherits(ref_vct, "units"), units::deparse_unit(ref_vct), NA),
+      ref_units = ifelse(
+        inherits(ref_vct, "units"),
+        units::deparse_unit(ref_vct),
+        NA
+      ),
       trg_cls = class(trg_vct)[[1]]
     )
-  }) |> 
+  }) |>
     purrr::list_rbind()
-  
-  # Coerce classes of columns of target dataset. Currently only dealing with 
-  # `<units>`, `<POSIXT`> and `<integer64>`
-  mutual_cols_prof |> 
-    purrr::pwalk(function(col_name, ref_cls, ref_units, trg_cls){
-      
-      if (ref_cls == "units"){
+
+  # Coerce classes of columns of target dataset into those in reference dataset.
+  # Currently only dealing with `<units>`, `<POSIXT`>, `<integer64>`,
+  # <character> & <numeric>
+  mutual_cols_prof |>
+    purrr::pwalk(function(col_name, ref_cls, ref_units, trg_cls) {
+      if (ref_cls == "units") {
         # convert to numeric if vector is all NAs
-        if(all(is.na(data[[col_name]]))){
+        if (all(is.na(data[[col_name]]))) {
           data[[col_name]] <- NA_real_
         }
-        data[[col_name]] <<- units::set_units(data[[col_name]], ref_units, mode = "standard")
-        
-      } else if (ref_cls == "POSIXct"){
-        
-        data[[col_name]] <<- lubridate::ymd_hms(data[[col_name]], tz = "UTC", truncated = 3)
-        
+        data[[col_name]] <<- units::set_units(
+          data[[col_name]],
+          ref_units,
+          mode = "standard"
+        )
+      } else if (ref_cls == "POSIXct") {
+        data[[col_name]] <<- lubridate::ymd_hms(
+          data[[col_name]],
+          tz = "UTC",
+          truncated = 3
+        )
       } else if (ref_cls == "integer64") {
-        
         data[[col_name]] <<- bit64::as.integer64(data[[col_name]])
-        
-      } else if(ref_cls == "character" && trg_cls == "numeric"){
-        
+      } else if (ref_cls == "character" && trg_cls == "numeric") {
         data[[col_name]] <<- as.character(data[[col_name]])
-        
+      } else if (ref_cls == "numeric" && trg_cls == "character") {
+        data[[col_name]] <<- as.numeric(data[[col_name]])
       }
-      
     })
-  
+
   data
 }
 
