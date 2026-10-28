@@ -196,7 +196,7 @@ rFunction <- function(
     api_base_url = api_base_url,
     token = api_token,
     unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback),
-    page_size = 5000
+    page_size = 2000
   )
 
   # Merge Historical and Current data ---------------------------------------
@@ -488,7 +488,7 @@ fetch_hist <- function(
   unclust_min_date = NULL,
   max_date = NULL,
   include_details = TRUE,
-  page_size = 5000,
+  page_size = 1000,
   provider_key = "moveapps_ann_locs"
   #cluster_status_filter = c("active", "all-status")
 ) {
