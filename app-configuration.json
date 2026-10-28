@@ -1,9 +1,9 @@
 {
-  "api_hostname": null,
+  "api_hostname": {},
   "api_token": "secret",
   "cluster_id_col": "clust_id",
   "lookback": 30,
-  "store_cols_str": null,
+  "store_cols_str": {},
   "days_thresh": 7,
   "dist_thresh": 100,
   "match_criteria": "gmedian",
