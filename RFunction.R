@@ -196,7 +196,7 @@ rFunction <- function(
     api_base_url = api_base_url,
     token = api_token,
     unclust_min_date = min(data[[tm_id_col]]) - lubridate::days(lookback),
-    page_size = 2000
+    page_size = 1000
   )
 
   # Merge Historical and Current data ---------------------------------------
@@ -918,8 +918,8 @@ get_obs <- function(
       httr2::req_retry(
         max_tries = 8,
         retry_on_failure = FALSE,
-        is_transient = \(resp) resp_status(resp) %in% c(400, 429, 503),
-        backoff = \(resp) 15
+        is_transient = \(resp) resp_status(resp) %in% c(400, 429, 503, 504),
+        backoff = \(resp) 30
       ) |>
       httr2::req_perform()
 
@@ -1025,7 +1025,7 @@ get_source_details <- function(src, api_base_url, token) {
     httr2::req_retry(
       max_tries = 5,
       retry_on_failure = FALSE,
-      is_transient = \(resp) resp_status(resp) %in% c(400),
+      is_transient = \(resp) resp_status(resp) %in% c(400, 504),
       backoff = \(resp) 5
     ) |>
     #httr2::req_error(~FALSE)|>
@@ -1053,7 +1053,7 @@ get_source_subjects <- function(src, api_base_url, token) {
     httr2::req_retry(
       max_tries = 5,
       retry_on_failure = FALSE,
-      is_transient = \(resp) resp_status(resp) %in% c(400),
+      is_transient = \(resp) resp_status(resp) %in% c(400, 504),
       backoff = \(resp) 5
     ) |>
     #httr2::req_error(~FALSE)|>
